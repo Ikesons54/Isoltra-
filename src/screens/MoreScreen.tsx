@@ -29,8 +29,8 @@ export default function MoreScreen() {
 
   const doImport = async (text: string) => {
     try {
-      const n = await importBackup(text)
-      say(`Imported ${n} song${n === 1 ? '' : 's'}.`)
+      const r = await importBackup(text)
+      say(`Imported ${r.songs} song(s) and ${r.services} service(s).`)
       setPasted('')
     } catch (e) {
       say((e as Error).message)
