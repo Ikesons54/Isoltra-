@@ -43,3 +43,8 @@ export function setPref(name: string, value: string): void {
     /* storage can be unavailable; ignore */
   }
 }
+
+/** "12. Amazing Grace" for hymns, plain title for songs */
+export function songLabel(s: { title: string; hymnNumber?: number }): string {
+  return s.hymnNumber !== undefined ? `${s.hymnNumber}. ${s.title}` : s.title
+}

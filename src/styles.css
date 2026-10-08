@@ -126,3 +126,7 @@ button.play.wide { width: 100%; padding: 14px; font-size: 1.05rem; margin-top: 4
 .mini:disabled { opacity: .3; }
 .item-ctl { flex-direction: row; align-items: center; }
 .home-card { background: var(--panel); border-radius: 14px; padding: 14px; }
+
+/* ---------- Hymnals ---------- */
+.list-item .li-sub { line-height: 1.3; }
+em { color: var(--muted); }

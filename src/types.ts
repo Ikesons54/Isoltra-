@@ -15,6 +15,23 @@ export interface Song {
   sections: SongSection[]
   createdAt: number
   updatedAt: number
+  /** Set when this song is a hymn that belongs to a hymnal */
+  hymnalId?: string
+  hymnNumber?: number
+  /** First line of the hymn, for recognition (not full lyrics) */
+  firstLine?: string
+}
+
+export interface Hymnal {
+  id: string
+  name: string
+  church: string
+  language: string
+  edition: string
+  /** Source / licence notes */
+  notes: string
+  builtin?: boolean
+  createdAt: number
 }
 
 export interface ServiceItem {
@@ -22,7 +39,7 @@ export interface ServiceItem {
   /** Where it sits in the service: Opening, Praise, Worship, Prayer, Preaching, Altar, Closing... */
   slot: string
   title: string
-  /** Linked library song (its progression is used) */
+  /** Linked library song or hymn (its progression is used) */
   songId?: string
   key: KeyName
   /** Own progression (key-independent) for pads, chants or custom items without a song */
