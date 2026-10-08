@@ -1,24 +1,27 @@
-import type { Hymnal, Service, Song } from '../types'
+import type { Hymnal, Pattern, PatternKind, Service, Song } from '../types'
 import { KEYS } from '../engine'
 import { BUILTIN_HYMNAL, HYMN_SEED_VERSION, PD_HYMNS } from '../data/publicDomainHymns'
+import { PATTERN_SEED_VERSION, STARTER_PATTERNS } from '../data/starterPatterns'
 import { SEED_SONGS } from './seed'
 
 const DB_NAME = 'isoltra'
 const SONGS = 'songs'
 const SERVICES = 'services'
 const HYMNALS = 'hymnals'
+const PATTERNS = 'patterns'
 
 let dbPromise: Promise<IDBDatabase> | null = null
 
 function openDb(): Promise<IDBDatabase> {
   if (!dbPromise) {
     dbPromise = new Promise((resolve, reject) => {
-      const req = indexedDB.open(DB_NAME, 3)
+      const req = indexedDB.open(DB_NAME, 4)
       req.onupgradeneeded = () => {
         const db = req.result
         if (!db.objectStoreNames.contains(SONGS)) db.createObjectStore(SONGS, { keyPath: 'id' })
         if (!db.objectStoreNames.contains(SERVICES)) db.createObjectStore(SERVICES, { keyPath: 'id' })
         if (!db.objectStoreNames.contains(HYMNALS)) db.createObjectStore(HYMNALS, { keyPath: 'id' })
+        if (!db.objectStoreNames.contains(PATTERNS)) db.createObjectStore(PATTERNS, { keyPath: 'id' })
       }
       req.onsuccess = () => resolve(req.result)
       req.onerror = () => reject(req.error)
@@ -148,12 +151,53 @@ export async function seedHymnalsIfNeeded(): Promise<void> {
   }
 }
 
+
+// ---------- Chants and pads ----------
+
+export async function listPatterns(kind?: PatternKind): Promise<Pattern[]> {
+  const all = await run<Pattern[]>(PATTERNS, 'readonly', s => s.getAll() as IDBRequest<Pattern[]>)
+  return all.filter(p => !kind || p.kind === kind).sort((a, b) => a.name.localeCompare(b.name))
+}
+
+export async function getPattern(id: string): Promise<Pattern | undefined> {
+  return run<Pattern | undefined>(PATTERNS, 'readonly', s => s.get(id) as IDBRequest<Pattern | undefined>)
+}
+
+export async function savePattern(p: Pattern): Promise<void> {
+  await run(PATTERNS, 'readwrite', s => s.put(p))
+}
+
+export async function deletePattern(id: string): Promise<void> {
+  await run(PATTERNS, 'readwrite', s => s.delete(id))
+}
+
+/** Installs the starter chants and pads (once per seed version). */
+export async function seedPatternsIfNeeded(): Promise<void> {
+  let done = 0
+  try {
+    done = Number(localStorage.getItem('isoltra.patternSeed') || '0')
+  } catch {
+    /* ignore */
+  }
+  if (done >= PATTERN_SEED_VERSION) return
+  const now = Date.now()
+  for (const p of STARTER_PATTERNS) {
+    const existing = await getPattern(p.id)
+    if (!existing) await savePattern({ ...p, createdAt: now })
+  }
+  try {
+    localStorage.setItem('isoltra.patternSeed', String(PATTERN_SEED_VERSION))
+  } catch {
+    /* ignore */
+  }
+}
+
 // ---------- Backup ----------
 
 export async function exportBackup(): Promise<string> {
-  const [songs, services, hymnals] = await Promise.all([listSongs(), listServices(), listHymnals()])
+  const [songs, services, hymnals, patterns] = await Promise.all([listSongs(), listServices(), listHymnals(), listPatterns()])
   return JSON.stringify(
-    { app: 'isoltra', version: 3, exportedAt: new Date().toISOString(), songs, services, hymnals: hymnals.filter(h => !h.builtin) },
+    { app: 'isoltra', version: 4, exportedAt: new Date().toISOString(), songs, services, hymnals: hymnals.filter(h => !h.builtin), patterns },
     null,
     2
   )
@@ -174,6 +218,17 @@ function isHymnal(x: any): x is Hymnal {
   return x && typeof x.id === 'string' && typeof x.name === 'string'
 }
 
+function isPattern(x: any): x is Pattern {
+  return (
+    x &&
+    typeof x.id === 'string' &&
+    typeof x.name === 'string' &&
+    typeof x.numbers === 'string' &&
+    (x.kind === 'chant' || x.kind === 'pad') &&
+    (KEYS as readonly string[]).includes(x.key)
+  )
+}
+
 function isService(x: any): x is Service {
   return (
     x &&
@@ -188,7 +243,7 @@ function isService(x: any): x is Service {
 }
 
 /** Throws if the text is not an Isoltra backup. Older backups (songs only) still work. */
-export async function importBackup(text: string): Promise<{ songs: number; services: number; hymnals: number }> {
+export async function importBackup(text: string): Promise<{ songs: number; services: number; hymnals: number; patterns: number }> {
   let data: any
   try {
     data = JSON.parse(text)
@@ -201,6 +256,15 @@ export async function importBackup(text: string): Promise<{ songs: number; servi
   let songs = 0
   let services = 0
   let hymnals = 0
+  let patterns = 0
+  if (Array.isArray(data.patterns)) {
+    for (const p of data.patterns) {
+      if (isPattern(p)) {
+        await savePattern({ ...p, moods: Array.isArray(p.moods) ? p.moods : [], difficulty: p.difficulty ?? 'Beginner', description: p.description ?? '', createdAt: p.createdAt ?? Date.now() })
+        patterns++
+      }
+    }
+  }
   if (Array.isArray(data.hymnals)) {
     for (const h of data.hymnals) {
       if (isHymnal(h) && !h.builtin) {
@@ -223,5 +287,5 @@ export async function importBackup(text: string): Promise<{ songs: number; servi
       }
     }
   }
-  return { songs, services, hymnals }
+  return { songs, services, hymnals, patterns }
 }
