@@ -27,6 +27,8 @@ export default function SongEditor({ id, hymnalId, onCancel, onSaved }: Props) {
   const [key, setKey] = useState<KeyName>('F')
   const [sections, setSections] = useState<DraftSection[]>([{ id: newId(), name: 'Verse', text: '' }])
   const [number, setNumber] = useState('')
+  const [bpm, setBpm] = useState('')
+  const [timeSig, setTimeSig] = useState('')
   const [firstLine, setFirstLine] = useState('')
   const [error, setError] = useState('')
 
@@ -39,6 +41,8 @@ export default function SongEditor({ id, hymnalId, onCancel, onSaved }: Props) {
         setArtist(s.artist)
         setKey(s.key)
         setNumber(s.hymnNumber !== undefined ? String(s.hymnNumber) : '')
+        setBpm(s.bpm ? String(s.bpm) : '')
+        setTimeSig(s.timeSig ?? '')
         setFirstLine(s.firstLine ?? '')
         setSections(s.sections.map(x => ({ id: x.id, name: x.name, text: x.numbers })))
       }
@@ -57,6 +61,11 @@ export default function SongEditor({ id, hymnalId, onCancel, onSaved }: Props) {
   const save = async () => {
     setError('')
     if (!title.trim()) return setError('Please enter a title.')
+    let tempo: number | undefined
+    if (bpm.trim()) {
+      tempo = Number(bpm)
+      if (!Number.isFinite(tempo) || tempo < 30 || tempo > 250) return setError('Tempo should be between 30 and 250 BPM.')
+    }
     let hymnNumber: number | undefined
     if (isHymn && number.trim()) {
       hymnNumber = Number(number.trim())
@@ -81,6 +90,8 @@ export default function SongEditor({ id, hymnalId, onCancel, onSaved }: Props) {
       sections: out,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
+      bpm: tempo,
+      timeSig: timeSig || undefined,
       ...(isHymn ? { hymnalId: owner, hymnNumber, firstLine: firstLine.trim() || undefined } : {})
     }
     await saveSong(song)
@@ -124,6 +135,23 @@ export default function SongEditor({ id, hymnalId, onCancel, onSaved }: Props) {
           ))}
         </select>
       </label>
+
+      <div className="row gap">
+        <label className="field grow">
+          Tempo BPM (optional)
+          <input inputMode="numeric" value={bpm} onChange={e => setBpm(e.target.value)} placeholder="e.g. 72" />
+        </label>
+        <label className="field grow">
+          Time signature
+          <select value={timeSig} onChange={e => setTimeSig(e.target.value)}>
+            <option value="">Not set</option>
+            <option value="4/4">4/4</option>
+            <option value="3/4">3/4</option>
+            <option value="6/8">6/8</option>
+            <option value="12/8">12/8</option>
+          </select>
+        </label>
+      </div>
 
       <h2 className="small-head">Sections</h2>
       <p className="muted hint">

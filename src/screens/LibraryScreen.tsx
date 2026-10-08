@@ -3,6 +3,7 @@ import { listSongs, seedIfFirstRun } from '../db/db'
 import type { KeyName } from '../engine'
 import type { Song } from '../types'
 import { HymnalForm, HymnalList, HymnList } from './HymnalsPanel'
+import PatternsPanel from './PatternsPanel'
 import SongDetail from './SongDetail'
 import SongEditor from './SongEditor'
 
@@ -23,7 +24,13 @@ const SUBS: { id: Sub; label: string }[] = [
   { id: 'saved', label: 'Saved' }
 ]
 
-export default function LibraryScreen({ onPlay }: { onPlay: (id: string, key: KeyName) => void }) {
+export default function LibraryScreen({
+  onPlay,
+  onPlayPattern
+}: {
+  onPlay: (id: string, key: KeyName) => void
+  onPlayPattern: (id: string, key: KeyName) => void
+}) {
   const [view, setView] = useState<View>({ name: 'list' })
   const [back, setBack] = useState<View>({ name: 'list' })
   const [sub, setSub] = useState<Sub>('songs')
@@ -105,7 +112,11 @@ export default function LibraryScreen({ onPlay }: { onPlay: (id: string, key: Ke
         ))}
       </div>
 
-      {(sub === 'chants' || sub === 'pads' || sub === 'saved') && <p className="muted">Coming soon.</p>}
+      {sub === 'saved' && <p className="muted">Coming soon.</p>}
+
+      {(sub === 'chants' || sub === 'pads') && (
+        <PatternsPanel key={sub} kind={sub === 'chants' ? 'chant' : 'pad'} onPlay={onPlayPattern} />
+      )}
 
       {sub === 'hymnals' && (
         <HymnalList onOpen={id => setView({ name: 'hymnal', id })} onNew={() => setView({ name: 'hymnalNew' })} />

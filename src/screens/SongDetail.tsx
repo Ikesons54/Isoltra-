@@ -119,10 +119,15 @@ export default function SongDetail({ id, onBack, onEdit, onPlay }: Props) {
       <div className="cards">
         {events.map((e, i) => (
           <div className="card" key={i}>
-            {mode === 'chords' && <div className="big">{e.chord}</div>}
+            {mode === 'chords' && (
+              <>
+                <div className="big">{e.chord}</div>
+                <div className="nts">{e.notes.join(' ')}</div>
+              </>
+            )}
             {mode === 'numbers' && <div className="big">{e.label}</div>}
             {mode === 'solfa' && <div className="big">{e.solfa}</div>}
-            {mode === 'notes' && <div className="mid">{e.notes.join(' ')}</div>}
+            {mode === 'notes' && <div className="big">{e.root}</div>}
             {mode === 'combined' && (
               <>
                 <div className="num">{e.label}</div>

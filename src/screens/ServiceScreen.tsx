@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { KEYS } from '../engine'
 import type { KeyName } from '../engine'
-import { deleteService, getService, listServices, listSongs, saveService, seedIfFirstRun } from '../db/db'
+import { deleteService, getService, listPatterns, listServices, listSongs, saveService, seedIfFirstRun, seedPatternsIfNeeded } from '../db/db'
 import { newId, normalizeInput, songLabel } from '../songs'
-import type { Service, ServiceItem, Song } from '../types'
+import type { Pattern, Service, ServiceItem, Song } from '../types'
 
 const SLOTS = ['Prelude', 'Opening', 'Praise', 'Worship', 'Prayer', 'Preaching', 'Altar', 'Offering', 'Closing']
 
@@ -216,6 +216,7 @@ function ServiceEditor({
 function ItemForm({ serviceId, itemId, onDone }: { serviceId: string; itemId?: string; onDone: () => void }) {
   const [service, setService] = useState<Service | null>(null)
   const [songs, setSongs] = useState<Song[]>([])
+  const [patterns, setPatterns] = useState<Pattern[]>([])
   const [slot, setSlot] = useState('Praise')
   const [songId, setSongId] = useState('')
   const [title, setTitle] = useState('')
@@ -225,8 +226,13 @@ function ItemForm({ serviceId, itemId, onDone }: { serviceId: string; itemId?: s
   const [error, setError] = useState('')
 
   useEffect(() => {
-    Promise.all([getService(serviceId), seedIfFirstRun().then(listSongs)]).then(([sv, list]) => {
+    Promise.all([
+      getService(serviceId),
+      seedIfFirstRun().then(listSongs),
+      seedPatternsIfNeeded().then(() => listPatterns())
+    ]).then(([sv, list, pats]) => {
       setSongs(list)
+      setPatterns(pats)
       if (!sv) return
       setService(sv)
       const item = sv.items.find(i => i.id === itemId)
@@ -250,6 +256,15 @@ function ItemForm({ serviceId, itemId, onDone }: { serviceId: string; itemId?: s
       setTitle(s.title)
       setKey(s.key)
     }
+  }
+
+  const pickPattern = (id: string) => {
+    const p = patterns.find(x => x.id === id)
+    if (!p) return
+    setSongId('')
+    setTitle(p.name)
+    setKey(p.key)
+    setText(p.numbers)
   }
 
   const save = async () => {
@@ -302,6 +317,18 @@ function ItemForm({ serviceId, itemId, onDone }: { serviceId: string; itemId?: s
           {songs.map(s => (
             <option key={s.id} value={s.id}>
               {songLabel(s)} ({s.key})
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label className="field">
+        Chant or pad from your library (optional)
+        <select value="" onChange={e => pickPattern(e.target.value)}>
+          <option value="">— choose to fill in below —</option>
+          {patterns.map(p => (
+            <option key={p.id} value={p.id}>
+              {p.kind === 'pad' ? 'Pad' : 'Chant'}: {p.name}
             </option>
           ))}
         </select>

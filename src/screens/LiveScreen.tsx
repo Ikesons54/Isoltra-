@@ -2,25 +2,30 @@ import { useEffect, useRef, useState } from 'react'
 import type { TouchEvent } from 'react'
 import { buildProgression, KEYS } from '../engine'
 import type { KeyName, MusicalEvent } from '../engine'
-import { getService, getSong, listServices, listSongs, seedIfFirstRun } from '../db/db'
+import { getPattern, getService, getSong, listPatterns, listServices, listSongs, seedIfFirstRun, seedPatternsIfNeeded } from '../db/db'
 import { getPref, setPref, songLabel } from '../songs'
 import type { DisplayMode } from '../songs'
-import type { Service, Song } from '../types'
+import type { Pattern, Service, Song } from '../types'
 
 export type LiveTarget =
   | { kind: 'song'; id: string; key: KeyName }
+  | { kind: 'pattern'; id: string; key: KeyName }
   | { kind: 'service'; id: string }
 
 interface PlanItem {
   title: string
   chip: string
   key: KeyName
+  bpm?: number
+  timeSig?: string
   sections: { name: string; numbers: string }[]
 }
 
 interface Plan {
   title: string
   single: boolean
+  /** Loops forever (chants and pads) */
+  loop: boolean
   items: PlanItem[]
   skipped: number
 }
@@ -29,7 +34,6 @@ interface Step {
   itemIndex: number
   itemTitle: string
   section: string
-  sectionIndex: number
   group: number
   pos: number
   total: number
@@ -46,6 +50,13 @@ const MODES: { id: DisplayMode; label: string }[] = [
   { id: 'combined', label: 'Combined' }
 ]
 
+const SIGNATURES: Record<string, number> = { '4/4': 4, '3/4': 3, '6/8': 2, '12/8': 4 }
+const BARS = [
+  { id: '0.5', label: 'Half a bar' },
+  { id: '1', label: '1 bar' },
+  { id: '2', label: '2 bars' }
+]
+
 async function loadPlan(target: LiveTarget): Promise<Plan | null> {
   if (target.kind === 'song') {
     const song = await getSong(target.id)
@@ -53,8 +64,29 @@ async function loadPlan(target: LiveTarget): Promise<Plan | null> {
     return {
       title: song.title,
       single: true,
+      loop: false,
       skipped: 0,
-      items: [{ title: song.title, chip: song.title, key: target.key, sections: song.sections }]
+      items: [{ title: song.title, chip: song.title, key: target.key, bpm: song.bpm, timeSig: song.timeSig, sections: song.sections }]
+    }
+  }
+  if (target.kind === 'pattern') {
+    const p = await getPattern(target.id)
+    if (!p) return null
+    return {
+      title: p.name,
+      single: true,
+      loop: true,
+      skipped: 0,
+      items: [
+        {
+          title: p.name,
+          chip: p.name,
+          key: target.key,
+          bpm: p.bpm,
+          timeSig: p.timeSig,
+          sections: [{ name: p.kind === 'pad' ? 'Pad' : 'Chant', numbers: p.numbers }]
+        }
+      ]
     }
   }
   const service = await getService(target.id)
@@ -71,9 +103,9 @@ async function loadPlan(target: LiveTarget): Promise<Plan | null> {
       skipped++
       continue
     }
-    items.push({ title: it.title, chip: it.slot || it.title, key: it.key, sections })
+    items.push({ title: it.title, chip: it.slot || it.title, key: it.key, bpm: song?.bpm, timeSig: song?.timeSig, sections })
   }
-  return { title: service.name, single: false, items, skipped }
+  return { title: service.name, single: false, loop: false, items, skipped }
 }
 
 function buildSteps(plan: Plan, keyOverride: KeyName): Step[] {
@@ -92,7 +124,6 @@ function buildSteps(plan: Plan, keyOverride: KeyName): Step[] {
           itemIndex,
           itemTitle: item.title,
           section: section.name,
-          sectionIndex,
           group: plan.single ? sectionIndex : itemIndex,
           pos: i + 1,
           total: events.length,
@@ -104,10 +135,11 @@ function buildSteps(plan: Plan, keyOverride: KeyName): Step[] {
   return steps
 }
 
+/** Chords: the chord symbol. Notes: one single note (the root). */
 function mainText(ev: MusicalEvent, mode: DisplayMode): string {
   if (mode === 'numbers') return ev.label
   if (mode === 'solfa') return ev.solfa
-  if (mode === 'notes') return ev.notes.join(' ')
+  if (mode === 'notes') return ev.root
   return ev.chord
 }
 
@@ -123,7 +155,7 @@ export default function LiveScreen({ target, stage, setStage, onPick, onClear }:
   if (!target) return <Picker onPick={onPick} />
   return (
     <Runner
-      key={target.kind === 'song' ? `song:${target.id}:${target.key}` : `service:${target.id}`}
+      key={target.kind === 'service' ? `service:${target.id}` : `${target.kind}:${target.id}:${target.key}`}
       target={target}
       stage={stage}
       setStage={setStage}
@@ -137,12 +169,18 @@ export default function LiveScreen({ target, stage, setStage, onPick, onClear }:
 function Picker({ onPick }: { onPick: (t: LiveTarget) => void }) {
   const [songs, setSongs] = useState<Song[]>([])
   const [services, setServices] = useState<Service[]>([])
+  const [patterns, setPatterns] = useState<Pattern[]>([])
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
-    Promise.all([seedIfFirstRun().then(listSongs), listServices()]).then(([s, sv]) => {
+    Promise.all([
+      seedIfFirstRun().then(listSongs),
+      listServices(),
+      seedPatternsIfNeeded().then(() => listPatterns())
+    ]).then(([s, sv, p]) => {
       setSongs(s)
       setServices(sv)
+      setPatterns(p)
       setReady(true)
     })
   }, [])
@@ -150,10 +188,12 @@ function Picker({ onPick }: { onPick: (t: LiveTarget) => void }) {
   return (
     <div>
       <h1>Live</h1>
-      <p className="muted">Start a service, or perform a single song. You can also tap Play inside any song.</p>
+      <p className="muted">Start a service, or perform a song, chant or pad. You can also tap Play inside any of them.</p>
 
       <h2 className="small-head">Services</h2>
-      {ready && services.length === 0 && <p className="muted">No services yet. Plan one in the Service tab.</p>}
+      {ready && services.filter(s => s.items.length > 0).length === 0 && (
+        <p className="muted">No services yet. Plan one in the Service tab.</p>
+      )}
       <ul className="list">
         {services
           .filter(s => s.items.length > 0)
@@ -169,7 +209,21 @@ function Picker({ onPick }: { onPick: (t: LiveTarget) => void }) {
           ))}
       </ul>
 
-      <h2 className="small-head">Songs</h2>
+      <h2 className="small-head">Chants and pads</h2>
+      <ul className="list">
+        {patterns.map(p => (
+          <li key={p.id}>
+            <button className="list-item" onClick={() => onPick({ kind: 'pattern', id: p.id, key: p.key })}>
+              <span className="li-title">{p.name}</span>
+              <span className="li-sub">
+                {p.kind === 'pad' ? 'Pad' : 'Chant'} · {p.moods.join(', ')}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+
+      <h2 className="small-head">Songs and hymns</h2>
       {ready && songs.length === 0 && <p className="muted">No songs yet. Add one in the Library tab.</p>}
       <ul className="list">
         {songs.map(s => (
@@ -225,7 +279,7 @@ function Runner({
   return (
     <Stage
       plan={plan}
-      startKey={target.kind === 'song' ? target.key : plan.items[0].key}
+      startKey={target.kind === 'service' ? plan.items[0].key : target.key}
       stage={stage}
       setStage={setStage}
       onClear={onClear}
@@ -248,20 +302,75 @@ function Stage({
   setStage: (on: boolean) => void
   onClear: () => void
 }) {
+  const first = plan.items[0]
   const [key, setKey] = useState<KeyName>(startKey)
   const [index, setIndex] = useState(0)
   const [mode, setMode] = useState<DisplayMode>(getPref('liveMode', 'chords') as DisplayMode)
   const [size, setSize] = useState<Size>(getPref('liveSize', 'M') as Size)
   const [wake, setWake] = useState(getPref('liveWake', '1') === '1')
   const [panel, setPanel] = useState(false)
+
+  // auto-advance (off until you start it)
+  const [auto, setAuto] = useState(false)
+  const [bpm, setBpm] = useState<number>(first.bpm ?? Number(getPref('liveBpm', '72')))
+  const [sig, setSig] = useState<string>(first.timeSig && SIGNATURES[first.timeSig] ? first.timeSig : getPref('liveSig', '4/4'))
+  const [bars, setBars] = useState<string>(getPref('liveBars', '1'))
+  const [click, setClick] = useState(getPref('liveClick', '0') === '1')
+  const [beat, setBeat] = useState(1)
+  const [sync, setSync] = useState(0)
+
   const touchX = useRef<number | null>(null)
+  const audioRef = useRef<AudioContext | null>(null)
 
   const steps = buildSteps(plan, key)
   const last = Math.max(steps.length - 1, 0)
+  const beatsPerChord = Math.max(1, Math.round((SIGNATURES[sig] ?? 4) * Number(bars)))
 
-  const next = () => setIndex(i => Math.min(i + 1, last))
-  const prev = () => setIndex(i => Math.max(i - 1, 0))
+  const paramsRef = useRef({ last, loop: plan.loop })
+  paramsRef.current = { last, loop: plan.loop }
 
+  const manual = () => setSync(s => s + 1)
+  const next = () => {
+    manual()
+    setIndex(i => (i >= paramsRef.current.last ? (paramsRef.current.loop ? 0 : i) : i + 1))
+  }
+  const prev = () => {
+    manual()
+    setIndex(i => Math.max(i - 1, 0))
+  }
+
+  const playClick = (accent: boolean) => {
+    try {
+      const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext
+      if (!audioRef.current) audioRef.current = new Ctx()
+      const ctx = audioRef.current as AudioContext
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.frequency.value = accent ? 1200 : 800
+      gain.gain.value = 0.15
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.start()
+      osc.stop(ctx.currentTime + 0.04)
+    } catch {
+      /* audio not available */
+    }
+  }
+
+  const toggleAuto = () => {
+    if (!auto) {
+      try {
+        const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext
+        if (!audioRef.current) audioRef.current = new Ctx()
+        audioRef.current?.resume()
+      } catch {
+        /* ignore */
+      }
+    }
+    setAuto(a => !a)
+  }
+
+  // keyboard / pedal
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ' || e.key === 'PageDown') {
@@ -274,8 +383,40 @@ function Stage({
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [last])
+  }, [])
 
+  // auto-advance clock: counts beats, moves to the next chord every `beatsPerChord` beats
+  useEffect(() => {
+    if (!auto) return
+    const beatMs = 60000 / bpm
+    let count = 0
+    let cancelled = false
+    let id = 0
+    const t0 = performance.now()
+    setBeat(1)
+    if (click) playClick(true)
+    const tick = () => {
+      if (cancelled) return
+      count++
+      const pos = count % beatsPerChord
+      if (pos === 0) setIndex(i => (i >= paramsRef.current.last ? (paramsRef.current.loop ? 0 : i) : i + 1))
+      setBeat(pos + 1)
+      if (click) playClick(pos === 0)
+      id = window.setTimeout(tick, Math.max(0, t0 + (count + 1) * beatMs - performance.now()))
+    }
+    id = window.setTimeout(tick, beatMs)
+    return () => {
+      cancelled = true
+      window.clearTimeout(id)
+    }
+  }, [auto, bpm, beatsPerChord, click, sync])
+
+  // stop at the end of a song (chants and pads keep looping)
+  useEffect(() => {
+    if (auto && !plan.loop && index >= last) setAuto(false)
+  }, [index])
+
+  // keep the screen awake while performing
   useEffect(() => {
     if (!wake) return
     let sentinel: any = null
@@ -345,13 +486,16 @@ function Stage({
   }
 
   const cur = steps[Math.min(index, last)]
-  const nxt = index < last ? steps[index + 1] : null
-  const atEnd = index >= last
+  const nxt = index < last ? steps[index + 1] : plan.loop ? steps[0] : null
+  const atEnd = index >= last && !plan.loop
 
   const groupLabels: string[] = plan.single ? plan.items[0].sections.map(s => s.name) : plan.items.map(i => i.chip)
   const jump = (group: number) => {
     const i = steps.findIndex(s => s.group === group)
-    if (i >= 0) setIndex(i)
+    if (i >= 0) {
+      manual()
+      setIndex(i)
+    }
   }
 
   const where = plan.single
@@ -360,8 +504,15 @@ function Stage({
 
   let nextTag = ''
   if (nxt) {
-    if (nxt.itemIndex !== cur.itemIndex) nextTag = nxt.itemTitle
+    if (plan.loop && index >= last) nextTag = '↺ repeat'
+    else if (nxt.itemIndex !== cur.itemIndex) nextTag = nxt.itemTitle
     else if (nxt.section !== cur.section) nextTag = nxt.section
+  }
+
+  const setBpmClamped = (v: number) => {
+    const n = Math.max(30, Math.min(250, Math.round(v) || 72))
+    setBpm(n)
+    setPref('liveBpm', String(n))
   }
 
   return (
@@ -396,6 +547,7 @@ function Stage({
                   onChange={e => {
                     setKey(e.target.value as KeyName)
                     setIndex(0)
+                    manual()
                   }}
                 >
                   {KEYS.map(k => (
@@ -405,6 +557,7 @@ function Stage({
               </label>
             </div>
           )}
+
           <div className="chips">
             {MODES.map(m => (
               <button
@@ -433,6 +586,70 @@ function Stage({
               </button>
             ))}
           </div>
+
+          <h2 className="small-head">Auto-advance</h2>
+          <p className="muted hint">
+            Moves to the next chord by itself using tempo and time signature. Tap Auto on the stage to start or pause. Swiping
+            or tapping Next re-syncs it.
+          </p>
+          <div className="row gap center wrap">
+            <label className="key-label">
+              Tempo
+              <button className="mini" onClick={() => setBpmClamped(bpm - 1)}>−</button>
+              <input
+                className="bpm"
+                inputMode="numeric"
+                value={bpm}
+                onChange={e => setBpm(Number(e.target.value.replace(/\D/g, '')) || 0)}
+                onBlur={() => setBpmClamped(bpm)}
+              />
+              <button className="mini" onClick={() => setBpmClamped(bpm + 1)}>+</button>
+              BPM
+            </label>
+          </div>
+          <div className="row gap center wrap">
+            <label className="key-label">
+              Time
+              <select
+                value={sig}
+                onChange={e => {
+                  setSig(e.target.value)
+                  setPref('liveSig', e.target.value)
+                }}
+              >
+                {Object.keys(SIGNATURES).map(s => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </label>
+            <label className="key-label">
+              Chord lasts
+              <select
+                value={bars}
+                onChange={e => {
+                  setBars(e.target.value)
+                  setPref('liveBars', e.target.value)
+                }}
+              >
+                {BARS.map(b => (
+                  <option key={b.id} value={b.id}>{b.label}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <p className="muted hint">= {beatsPerChord} beat{beatsPerChord === 1 ? '' : 's'} per chord</p>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={click}
+              onChange={e => {
+                setClick(e.target.checked)
+                setPref('liveClick', e.target.checked ? '1' : '0')
+              }}
+            />
+            Metronome click
+          </label>
+
           <label className="check">
             <input
               type="checkbox"
@@ -468,7 +685,17 @@ function Stage({
             <div className="live-notes">{cur.ev.notes.join(' ')}</div>
           </>
         ) : (
-          <div className={mode === 'notes' ? 'live-main notes' : 'live-main'}>{mainText(cur.ev, mode)}</div>
+          <>
+            <div className="live-main">{mainText(cur.ev, mode)}</div>
+            {mode === 'chords' && <div className="live-notes">{cur.ev.notes.join(' ')}</div>}
+          </>
+        )}
+        {auto && (
+          <div className="beats">
+            {Array.from({ length: beatsPerChord }, (_, i) => (
+              <span key={i} className={i + 1 === beat ? 'dot on' : 'dot'} />
+            ))}
+          </div>
         )}
       </div>
 
@@ -488,6 +715,9 @@ function Stage({
 
       <div className="live-controls">
         <button className="ctl" onClick={prev} disabled={index === 0}>◀ Prev</button>
+        <button className={auto ? 'ctl auto on' : 'ctl auto'} onClick={toggleAuto} disabled={atEnd}>
+          {auto ? '⏸ Auto' : '▶ Auto'}
+        </button>
         {atEnd ? (
           <button className="ctl go" onClick={() => setIndex(0)}>↺ Restart</button>
         ) : (
