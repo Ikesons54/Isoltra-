@@ -1,21 +1,24 @@
-import type { Service, Song } from '../types'
+import type { Hymnal, Service, Song } from '../types'
 import { KEYS } from '../engine'
+import { BUILTIN_HYMNAL, HYMN_SEED_VERSION, PD_HYMNS } from '../data/publicDomainHymns'
 import { SEED_SONGS } from './seed'
 
 const DB_NAME = 'isoltra'
 const SONGS = 'songs'
 const SERVICES = 'services'
+const HYMNALS = 'hymnals'
 
 let dbPromise: Promise<IDBDatabase> | null = null
 
 function openDb(): Promise<IDBDatabase> {
   if (!dbPromise) {
     dbPromise = new Promise((resolve, reject) => {
-      const req = indexedDB.open(DB_NAME, 2)
+      const req = indexedDB.open(DB_NAME, 3)
       req.onupgradeneeded = () => {
         const db = req.result
         if (!db.objectStoreNames.contains(SONGS)) db.createObjectStore(SONGS, { keyPath: 'id' })
         if (!db.objectStoreNames.contains(SERVICES)) db.createObjectStore(SERVICES, { keyPath: 'id' })
+        if (!db.objectStoreNames.contains(HYMNALS)) db.createObjectStore(HYMNALS, { keyPath: 'id' })
       }
       req.onsuccess = () => resolve(req.result)
       req.onerror = () => reject(req.error)
@@ -96,12 +99,61 @@ export async function deleteService(id: string): Promise<void> {
   await run(SERVICES, 'readwrite', s => s.delete(id))
 }
 
+
+// ---------- Hymnals ----------
+
+export async function listHymnals(): Promise<Hymnal[]> {
+  const list = await run<Hymnal[]>(HYMNALS, 'readonly', s => s.getAll() as IDBRequest<Hymnal[]>)
+  return list.sort((a, b) => Number(!!b.builtin) - Number(!!a.builtin) || a.name.localeCompare(b.name))
+}
+
+export async function getHymnal(id: string): Promise<Hymnal | undefined> {
+  return run<Hymnal | undefined>(HYMNALS, 'readonly', s => s.get(id) as IDBRequest<Hymnal | undefined>)
+}
+
+export async function saveHymnal(h: Hymnal): Promise<void> {
+  await run(HYMNALS, 'readwrite', s => s.put(h))
+}
+
+/** Deletes the hymnal and every hymn in it. */
+export async function deleteHymnal(id: string): Promise<void> {
+  const songs = await listSongs()
+  for (const s of songs) if (s.hymnalId === id) await deleteSong(s.id)
+  await run(HYMNALS, 'readwrite', s => s.delete(id))
+}
+
+export async function listHymns(hymnalId: string): Promise<Song[]> {
+  const songs = await listSongs()
+  return songs
+    .filter(s => s.hymnalId === hymnalId)
+    .sort((a, b) => (a.hymnNumber ?? 1e9) - (b.hymnNumber ?? 1e9) || a.title.localeCompare(b.title))
+}
+
+/** Installs the built-in public-domain hymnal (once per seed version). */
+export async function seedHymnalsIfNeeded(): Promise<void> {
+  let done = 0
+  try {
+    done = Number(localStorage.getItem('isoltra.hymnSeed') || '0')
+  } catch {
+    /* ignore */
+  }
+  if (done >= HYMN_SEED_VERSION) return
+  const now = Date.now()
+  await saveHymnal({ ...BUILTIN_HYMNAL, createdAt: now })
+  for (const h of PD_HYMNS) await saveSong({ ...h, createdAt: now, updatedAt: now })
+  try {
+    localStorage.setItem('isoltra.hymnSeed', String(HYMN_SEED_VERSION))
+  } catch {
+    /* ignore */
+  }
+}
+
 // ---------- Backup ----------
 
 export async function exportBackup(): Promise<string> {
-  const [songs, services] = await Promise.all([listSongs(), listServices()])
+  const [songs, services, hymnals] = await Promise.all([listSongs(), listServices(), listHymnals()])
   return JSON.stringify(
-    { app: 'isoltra', version: 2, exportedAt: new Date().toISOString(), songs, services },
+    { app: 'isoltra', version: 3, exportedAt: new Date().toISOString(), songs, services, hymnals: hymnals.filter(h => !h.builtin) },
     null,
     2
   )
@@ -118,6 +170,10 @@ function isSong(x: any): x is Song {
   )
 }
 
+function isHymnal(x: any): x is Hymnal {
+  return x && typeof x.id === 'string' && typeof x.name === 'string'
+}
+
 function isService(x: any): x is Service {
   return (
     x &&
@@ -132,7 +188,7 @@ function isService(x: any): x is Service {
 }
 
 /** Throws if the text is not an Isoltra backup. Older backups (songs only) still work. */
-export async function importBackup(text: string): Promise<{ songs: number; services: number }> {
+export async function importBackup(text: string): Promise<{ songs: number; services: number; hymnals: number }> {
   let data: any
   try {
     data = JSON.parse(text)
@@ -144,6 +200,15 @@ export async function importBackup(text: string): Promise<{ songs: number; servi
   }
   let songs = 0
   let services = 0
+  let hymnals = 0
+  if (Array.isArray(data.hymnals)) {
+    for (const h of data.hymnals) {
+      if (isHymnal(h) && !h.builtin) {
+        await saveHymnal({ ...h, church: h.church ?? '', language: h.language ?? '', edition: h.edition ?? '', notes: h.notes ?? '', createdAt: h.createdAt ?? Date.now() })
+        hymnals++
+      }
+    }
+  }
   for (const s of data.songs) {
     if (isSong(s)) {
       await saveSong({ ...s, artist: s.artist ?? '', updatedAt: Date.now() })
@@ -158,5 +223,5 @@ export async function importBackup(text: string): Promise<{ songs: number; servi
       }
     }
   }
-  return { songs, services }
+  return { songs, services, hymnals }
 }
