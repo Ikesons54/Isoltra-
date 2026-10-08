@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import LibraryScreen from './screens/LibraryScreen'
+import MoreScreen from './screens/MoreScreen'
 
 type Tab = 'home' | 'library' | 'service' | 'live' | 'more'
 
@@ -10,17 +12,14 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'more', label: 'More' }
 ]
 
-const PLACEHOLDERS: Record<Tab, { title: string; text: string }> = {
-  home: { title: 'What are you playing today?', text: 'Search, quick access and your next service will appear here.' },
-  library: { title: 'Library', text: 'Songs, Hymnals, Chants, Pads and Saved.' },
-  service: { title: 'Service', text: 'Build and reorder your Sunday service.' },
-  live: { title: 'Live', text: 'Stage mode: current chord, next chord, numbers and solfa.' },
-  more: { title: 'More', text: 'Settings, backup and about.' }
+const PLACEHOLDERS: Record<'home' | 'service' | 'live', { title: string; text: string }> = {
+  home: { title: 'What are you playing today?', text: 'Open the Library tab to add and play your songs.' },
+  service: { title: 'Service', text: 'Build and reorder your Sunday service. Coming soon.' },
+  live: { title: 'Live', text: 'Stage mode: current chord, next chord, numbers and solfa. Coming soon.' }
 }
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('home')
-  const page = PLACEHOLDERS[tab]
 
   return (
     <div className="app">
@@ -30,9 +29,14 @@ export default function App() {
       </header>
 
       <main className="content">
-        <h1>{page.title}</h1>
-        <p>{page.text}</p>
-        {tab === 'more' && <p className="powered">Powered by FWX plus</p>}
+        {tab === 'library' && <LibraryScreen />}
+        {tab === 'more' && <MoreScreen />}
+        {(tab === 'home' || tab === 'service' || tab === 'live') && (
+          <>
+            <h1>{PLACEHOLDERS[tab].title}</h1>
+            <p>{PLACEHOLDERS[tab].text}</p>
+          </>
+        )}
       </main>
 
       <nav className="tabs">
