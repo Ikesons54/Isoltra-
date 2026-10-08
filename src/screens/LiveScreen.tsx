@@ -2,19 +2,35 @@ import { useEffect, useRef, useState } from 'react'
 import type { TouchEvent } from 'react'
 import { buildProgression, KEYS } from '../engine'
 import type { KeyName, MusicalEvent } from '../engine'
-import { getSong, listSongs, seedIfFirstRun } from '../db/db'
+import { getService, getSong, listServices, listSongs, seedIfFirstRun } from '../db/db'
 import { getPref, setPref } from '../songs'
 import type { DisplayMode } from '../songs'
-import type { Song } from '../types'
+import type { Service, Song } from '../types'
 
-export interface LiveTarget {
-  id: string
+export type LiveTarget =
+  | { kind: 'song'; id: string; key: KeyName }
+  | { kind: 'service'; id: string }
+
+interface PlanItem {
+  title: string
+  chip: string
   key: KeyName
+  sections: { name: string; numbers: string }[]
+}
+
+interface Plan {
+  title: string
+  single: boolean
+  items: PlanItem[]
+  skipped: number
 }
 
 interface Step {
+  itemIndex: number
+  itemTitle: string
   section: string
   sectionIndex: number
+  group: number
   pos: number
   total: number
   ev: MusicalEvent
@@ -30,16 +46,60 @@ const MODES: { id: DisplayMode; label: string }[] = [
   { id: 'combined', label: 'Combined' }
 ]
 
-function buildSteps(song: Song, key: KeyName): Step[] {
-  const steps: Step[] = []
-  song.sections.forEach((section, sectionIndex) => {
-    let events: MusicalEvent[] = []
-    try {
-      events = buildProgression(key, section.numbers)
-    } catch {
-      events = []
+async function loadPlan(target: LiveTarget): Promise<Plan | null> {
+  if (target.kind === 'song') {
+    const song = await getSong(target.id)
+    if (!song) return null
+    return {
+      title: song.title,
+      single: true,
+      skipped: 0,
+      items: [{ title: song.title, chip: song.title, key: target.key, sections: song.sections }]
     }
-    events.forEach((ev, i) => steps.push({ section: section.name, sectionIndex, pos: i + 1, total: events.length, ev }))
+  }
+  const service = await getService(target.id)
+  if (!service) return null
+  const songs = await listSongs()
+  const items: PlanItem[] = []
+  let skipped = 0
+  for (const it of service.items) {
+    const song = it.songId ? songs.find(s => s.id === it.songId) : undefined
+    let sections: { name: string; numbers: string }[] = []
+    if (song) sections = song.sections
+    else if (it.numbers) sections = [{ name: it.slot || 'Progression', numbers: it.numbers }]
+    if (sections.length === 0) {
+      skipped++
+      continue
+    }
+    items.push({ title: it.title, chip: it.slot || it.title, key: it.key, sections })
+  }
+  return { title: service.name, single: false, items, skipped }
+}
+
+function buildSteps(plan: Plan, keyOverride: KeyName): Step[] {
+  const steps: Step[] = []
+  plan.items.forEach((item, itemIndex) => {
+    const key = plan.single ? keyOverride : item.key
+    item.sections.forEach((section, sectionIndex) => {
+      let events: MusicalEvent[] = []
+      try {
+        events = buildProgression(key, section.numbers)
+      } catch {
+        events = []
+      }
+      events.forEach((ev, i) =>
+        steps.push({
+          itemIndex,
+          itemTitle: item.title,
+          section: section.name,
+          sectionIndex,
+          group: plan.single ? sectionIndex : itemIndex,
+          pos: i + 1,
+          total: events.length,
+          ev
+        })
+      )
+    })
   })
   return steps
 }
@@ -61,33 +121,60 @@ interface Props {
 
 export default function LiveScreen({ target, stage, setStage, onPick, onClear }: Props) {
   if (!target) return <Picker onPick={onPick} />
-  return <Stage target={target} stage={stage} setStage={setStage} onClear={onClear} />
+  return (
+    <Runner
+      key={target.kind === 'song' ? `song:${target.id}:${target.key}` : `service:${target.id}`}
+      target={target}
+      stage={stage}
+      setStage={setStage}
+      onClear={onClear}
+    />
+  )
 }
 
-// ---------- Song picker ----------
+// ---------- Picker ----------
 
 function Picker({ onPick }: { onPick: (t: LiveTarget) => void }) {
   const [songs, setSongs] = useState<Song[]>([])
+  const [services, setServices] = useState<Service[]>([])
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
-    seedIfFirstRun()
-      .then(listSongs)
-      .then(s => {
-        setSongs(s)
-        setReady(true)
-      })
+    Promise.all([seedIfFirstRun().then(listSongs), listServices()]).then(([s, sv]) => {
+      setSongs(s)
+      setServices(sv)
+      setReady(true)
+    })
   }, [])
 
   return (
     <div>
       <h1>Live</h1>
-      <p className="muted">Choose a song to perform. You can also tap Play inside any song.</p>
+      <p className="muted">Start a service, or perform a single song. You can also tap Play inside any song.</p>
+
+      <h2 className="small-head">Services</h2>
+      {ready && services.length === 0 && <p className="muted">No services yet. Plan one in the Service tab.</p>}
+      <ul className="list">
+        {services
+          .filter(s => s.items.length > 0)
+          .map(s => (
+            <li key={s.id}>
+              <button className="list-item" onClick={() => onPick({ kind: 'service', id: s.id })}>
+                <span className="li-title">▶ {s.name}</span>
+                <span className="li-sub">
+                  {s.date} · {s.items.length} items
+                </span>
+              </button>
+            </li>
+          ))}
+      </ul>
+
+      <h2 className="small-head">Songs</h2>
       {ready && songs.length === 0 && <p className="muted">No songs yet. Add one in the Library tab.</p>}
       <ul className="list">
         {songs.map(s => (
           <li key={s.id}>
-            <button className="list-item" onClick={() => onPick({ id: s.id, key: s.key })}>
+            <button className="list-item" onClick={() => onPick({ kind: 'song', id: s.id, key: s.key })}>
               <span className="li-title">{s.title}</span>
               <span className="li-sub">Key {s.key}</span>
             </button>
@@ -98,9 +185,9 @@ function Picker({ onPick }: { onPick: (t: LiveTarget) => void }) {
   )
 }
 
-// ---------- Stage view ----------
+// ---------- Loads the plan, then shows the stage ----------
 
-function Stage({
+function Runner({
   target,
   stage,
   setStage,
@@ -111,9 +198,57 @@ function Stage({
   setStage: (on: boolean) => void
   onClear: () => void
 }) {
-  const [song, setSong] = useState<Song | null>(null)
+  const [plan, setPlan] = useState<Plan | null>(null)
   const [missing, setMissing] = useState(false)
-  const [key, setKey] = useState<KeyName>(target.key)
+
+  useEffect(() => {
+    loadPlan(target).then(p => (p ? setPlan(p) : setMissing(true)))
+  }, [])
+
+  if (missing) {
+    return (
+      <div>
+        <button className="link" onClick={onClear}>← Back</button>
+        <p>That could not be found. It may have been deleted.</p>
+      </div>
+    )
+  }
+  if (!plan) return <p className="muted">Loading…</p>
+  if (plan.items.length === 0) {
+    return (
+      <div>
+        <button className="link" onClick={onClear}>← Back</button>
+        <p className="muted">Nothing to play yet. Add songs, or a progression, to the service items.</p>
+      </div>
+    )
+  }
+  return (
+    <Stage
+      plan={plan}
+      startKey={target.kind === 'song' ? target.key : plan.items[0].key}
+      stage={stage}
+      setStage={setStage}
+      onClear={onClear}
+    />
+  )
+}
+
+// ---------- Stage view ----------
+
+function Stage({
+  plan,
+  startKey,
+  stage,
+  setStage,
+  onClear
+}: {
+  plan: Plan
+  startKey: KeyName
+  stage: boolean
+  setStage: (on: boolean) => void
+  onClear: () => void
+}) {
+  const [key, setKey] = useState<KeyName>(startKey)
   const [index, setIndex] = useState(0)
   const [mode, setMode] = useState<DisplayMode>(getPref('liveMode', 'chords') as DisplayMode)
   const [size, setSize] = useState<Size>(getPref('liveSize', 'M') as Size)
@@ -121,19 +256,12 @@ function Stage({
   const [panel, setPanel] = useState(false)
   const touchX = useRef<number | null>(null)
 
-  useEffect(() => {
-    setKey(target.key)
-    setIndex(0)
-    getSong(target.id).then(s => (s ? setSong(s) : setMissing(true)))
-  }, [target.id, target.key])
-
-  const steps = song ? buildSteps(song, key) : []
+  const steps = buildSteps(plan, key)
   const last = Math.max(steps.length - 1, 0)
 
   const next = () => setIndex(i => Math.min(i + 1, last))
   const prev = () => setIndex(i => Math.max(i - 1, 0))
 
-  // keyboard: arrows / space (handy with a Bluetooth page-turn pedal or keyboard)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ' || e.key === 'PageDown') {
@@ -148,7 +276,6 @@ function Stage({
     return () => window.removeEventListener('keydown', onKey)
   }, [last])
 
-  // keep the screen awake while performing
   useEffect(() => {
     if (!wake) return
     let sentinel: any = null
@@ -178,7 +305,6 @@ function Stage({
     }
   }, [wake])
 
-  // leaving the Live tab always leaves stage mode
   useEffect(() => () => setStage(false), [])
 
   const enterStage = () => {
@@ -209,68 +335,76 @@ function Stage({
     if (Math.abs(dx) > 50) (dx < 0 ? next : prev)()
   }
 
-  if (missing) {
-    return (
-      <div>
-        <button className="link" onClick={onClear}>← Songs</button>
-        <p>This song could not be found.</p>
-      </div>
-    )
-  }
-  if (!song) return <p className="muted">Loading…</p>
   if (steps.length === 0) {
     return (
       <div>
-        <button className="link" onClick={onClear}>← Songs</button>
-        <p className="muted">This song has no progression to play yet.</p>
+        <button className="link" onClick={onClear}>← Back</button>
+        <p className="muted">There is no progression to play yet.</p>
       </div>
     )
   }
 
   const cur = steps[Math.min(index, last)]
   const nxt = index < last ? steps[index + 1] : null
-  const sectionChange = nxt && nxt.sectionIndex !== cur.sectionIndex
   const atEnd = index >= last
 
-  const jump = (sectionIndex: number) => {
-    const i = steps.findIndex(s => s.sectionIndex === sectionIndex)
+  const groupLabels: string[] = plan.single ? plan.items[0].sections.map(s => s.name) : plan.items.map(i => i.chip)
+  const jump = (group: number) => {
+    const i = steps.findIndex(s => s.group === group)
     if (i >= 0) setIndex(i)
+  }
+
+  const where = plan.single
+    ? `${cur.section} · ${cur.pos}/${cur.total}`
+    : `${cur.itemTitle} · ${cur.section} ${cur.pos}/${cur.total}`
+
+  let nextTag = ''
+  if (nxt) {
+    if (nxt.itemIndex !== cur.itemIndex) nextTag = nxt.itemTitle
+    else if (nxt.section !== cur.section) nextTag = nxt.section
   }
 
   return (
     <div className={`live size-${size}`} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
       {!stage && (
         <div className="row between">
-          <button className="link" onClick={onClear}>← Songs</button>
+          <button className="link" onClick={onClear}>← Back</button>
           <div className="live-title">
-            {song.title} <span className="muted">· {key}</span>
+            {plan.title}
+            {plan.single && <span className="muted"> · {key}</span>}
           </div>
           <button className="link" onClick={() => setPanel(p => !p)}>{panel ? 'Close' : 'Settings'}</button>
         </div>
       )}
 
-      {stage && (
-        <button className="stage-exit" onClick={exitStage}>Exit stage</button>
+      {stage && <button className="stage-exit" onClick={exitStage}>Exit stage</button>}
+
+      {!stage && plan.skipped > 0 && (
+        <p className="muted hint">
+          {plan.skipped} item{plan.skipped === 1 ? ' has' : 's have'} no music and {plan.skipped === 1 ? 'is' : 'are'} skipped.
+        </p>
       )}
 
       {panel && !stage && (
         <div className="panel">
-          <div className="row gap center wrap">
-            <label className="key-label">
-              Key
-              <select
-                value={key}
-                onChange={e => {
-                  setKey(e.target.value as KeyName)
-                  setIndex(0)
-                }}
-              >
-                {KEYS.map(k => (
-                  <option key={k} value={k}>{k}</option>
-                ))}
-              </select>
-            </label>
-          </div>
+          {plan.single && (
+            <div className="row gap center wrap">
+              <label className="key-label">
+                Key
+                <select
+                  value={key}
+                  onChange={e => {
+                    setKey(e.target.value as KeyName)
+                    setIndex(0)
+                  }}
+                >
+                  {KEYS.map(k => (
+                    <option key={k} value={k}>{k}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          )}
           <div className="chips">
             {MODES.map(m => (
               <button
@@ -314,20 +448,18 @@ function Stage({
         </div>
       )}
 
-      {!stage && (
+      {!stage && groupLabels.length > 1 && (
         <div className="chips">
-          {song.sections.map((s, i) => (
-            <button key={s.id} className={i === cur.sectionIndex ? 'chip on' : 'chip'} onClick={() => jump(i)}>
-              {s.name}
+          {groupLabels.map((label, i) => (
+            <button key={i} className={i === cur.group ? 'chip on' : 'chip'} onClick={() => jump(i)}>
+              {label}
             </button>
           ))}
         </div>
       )}
 
       <div className="live-current">
-        <div className="live-where">
-          {cur.section} · {cur.pos}/{cur.total}
-        </div>
+        <div className="live-where">{where}</div>
         {mode === 'combined' ? (
           <>
             <div className="live-num">{cur.ev.label}</div>
@@ -344,11 +476,13 @@ function Stage({
         <span className="live-next-label">NEXT</span>
         {nxt ? (
           <>
-            <span className="live-next-val">{mode === 'combined' ? `${nxt.ev.chord} · ${nxt.ev.label}` : mainText(nxt.ev, mode)}</span>
-            {sectionChange && <span className="live-next-sec">{nxt.section}</span>}
+            <span className="live-next-val">
+              {mode === 'combined' ? `${nxt.ev.chord} · ${nxt.ev.label}` : mainText(nxt.ev, mode)}
+            </span>
+            {nextTag && <span className="live-next-sec">{nextTag}</span>}
           </>
         ) : (
-          <span className="live-next-val">End of song</span>
+          <span className="live-next-val">End of {plan.single ? 'song' : 'service'}</span>
         )}
       </div>
 
