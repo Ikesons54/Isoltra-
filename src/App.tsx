@@ -1,8 +1,10 @@
 import { useState } from 'react'
+import HomeScreen from './screens/HomeScreen'
 import LibraryScreen from './screens/LibraryScreen'
 import LiveScreen from './screens/LiveScreen'
 import type { LiveTarget } from './screens/LiveScreen'
 import MoreScreen from './screens/MoreScreen'
+import ServiceScreen from './screens/ServiceScreen'
 
 type Tab = 'home' | 'library' | 'service' | 'live' | 'more'
 
@@ -14,11 +16,6 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'more', label: 'More' }
 ]
 
-const PLACEHOLDERS: Record<'home' | 'service', { title: string; text: string }> = {
-  home: { title: 'What are you playing today?', text: 'Open Library to add songs, then tap Play to perform them in Live.' },
-  service: { title: 'Service', text: 'Build and reorder your Sunday service. Coming soon.' }
-}
-
 export default function App() {
   const [tab, setTab] = useState<Tab>('home')
   const [live, setLive] = useState<LiveTarget | null>(null)
@@ -28,6 +25,7 @@ export default function App() {
     setLive(t)
     setTab('live')
   }
+  const startService = (id: string) => play({ kind: 'service', id })
 
   return (
     <div className={stage ? 'app stage' : 'app'}>
@@ -39,17 +37,15 @@ export default function App() {
       )}
 
       <main className="content">
-        {tab === 'library' && <LibraryScreen onPlay={(id, key) => play({ id, key })} />}
+        {tab === 'home' && (
+          <HomeScreen onStart={startService} goService={() => setTab('service')} goLibrary={() => setTab('library')} />
+        )}
+        {tab === 'library' && <LibraryScreen onPlay={(id, key) => play({ kind: 'song', id, key })} />}
+        {tab === 'service' && <ServiceScreen onStart={startService} />}
         {tab === 'live' && (
           <LiveScreen target={live} stage={stage} setStage={setStage} onPick={play} onClear={() => setLive(null)} />
         )}
         {tab === 'more' && <MoreScreen />}
-        {(tab === 'home' || tab === 'service') && (
-          <>
-            <h1>{PLACEHOLDERS[tab].title}</h1>
-            <p>{PLACEHOLDERS[tab].text}</p>
-          </>
-        )}
       </main>
 
       {!stage && (
