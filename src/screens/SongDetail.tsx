@@ -18,9 +18,10 @@ interface Props {
   id: string
   onBack: () => void
   onEdit: () => void
+  onPlay: (id: string, key: KeyName) => void
 }
 
-export default function SongDetail({ id, onBack, onEdit }: Props) {
+export default function SongDetail({ id, onBack, onEdit, onPlay }: Props) {
   const [song, setSong] = useState<Song | null>(null)
   const [missing, setMissing] = useState(false)
   const [viewKey, setViewKey] = useState<KeyName>('C')
@@ -93,7 +94,7 @@ export default function SongDetail({ id, onBack, onEdit }: Props) {
         {viewKey !== song.key && (
           <button className="link" onClick={() => setViewKey(song.key)}>Reset to {song.key}</button>
         )}
-        <button className="play" disabled title="Live mode is coming soon">Play</button>
+        <button className="play on" onClick={() => onPlay(song.id, viewKey)}>Play</button>
       </div>
 
       <div className="chips">

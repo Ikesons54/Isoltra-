@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { listSongs, seedIfFirstRun } from '../db/db'
+import type { KeyName } from '../engine'
 import type { Song } from '../types'
 import SongDetail from './SongDetail'
 import SongEditor from './SongEditor'
@@ -15,7 +16,7 @@ const SUBS: { id: Sub; label: string }[] = [
   { id: 'saved', label: 'Saved' }
 ]
 
-export default function LibraryScreen() {
+export default function LibraryScreen({ onPlay }: { onPlay: (id: string, key: KeyName) => void }) {
   const [view, setView] = useState<View>({ name: 'list' })
   const [sub, setSub] = useState<Sub>('songs')
   const [songs, setSongs] = useState<Song[]>([])
@@ -38,6 +39,7 @@ export default function LibraryScreen() {
         id={view.id}
         onBack={() => setView({ name: 'list' })}
         onEdit={() => setView({ name: 'edit', id: view.id })}
+        onPlay={onPlay}
       />
     )
   }
