@@ -40,7 +40,10 @@ export default function App() {
         {tab === 'home' && (
           <HomeScreen onStart={startService} goService={() => setTab('service')} goLibrary={() => setTab('library')} />
         )}
-        {tab === 'library' && <LibraryScreen onPlay={(id, key) => play({ kind: 'song', id, key })} />}
+        {tab === 'library' && <LibraryScreen
+            onPlay={(id, key) => play({ kind: 'song', id, key })}
+            onPlayPattern={(id, key) => play({ kind: 'pattern', id, key })}
+          />}
         {tab === 'service' && <ServiceScreen onStart={startService} />}
         {tab === 'live' && (
           <LiveScreen target={live} stage={stage} setStage={setStage} onPick={play} onClear={() => setLive(null)} />

@@ -20,6 +20,9 @@ export interface Song {
   hymnNumber?: number
   /** First line of the hymn, for recognition (not full lyrics) */
   firstLine?: string
+  /** Optional tempo and time signature (used by Live auto-advance) */
+  bpm?: number
+  timeSig?: string
 }
 
 export interface Hymnal {
@@ -55,4 +58,25 @@ export interface Service {
   items: ServiceItem[]
   createdAt: number
   updatedAt: number
+}
+
+export type PatternKind = 'chant' | 'pad'
+export type Difficulty = 'Beginner' | 'Intermediate' | 'Advanced'
+
+/** A reusable loop: a worship chant or an atmosphere pad. Stored as numbers, played in any key. */
+export interface Pattern {
+  id: string
+  kind: PatternKind
+  name: string
+  /** Key-independent progression, e.g. "1 5 2 4 1" */
+  numbers: string
+  /** Suggested key to show first */
+  key: KeyName
+  moods: string[]
+  bpm?: number
+  timeSig?: string
+  difficulty: Difficulty
+  description: string
+  builtin?: boolean
+  createdAt: number
 }

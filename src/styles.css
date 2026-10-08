@@ -130,3 +130,13 @@ button.play.wide { width: 100%; padding: 14px; font-size: 1.05rem; margin-top: 4
 /* ---------- Hymnals ---------- */
 .list-item .li-sub { line-height: 1.3; }
 em { color: var(--muted); }
+
+/* ---------- Patterns, voicings, auto-advance ---------- */
+.card .voicing { margin-top: 6px; font-size: .78rem; color: var(--blue); line-height: 1.35; }
+.bpm { width: 64px; text-align: center; padding: 8px 6px; }
+.beats { display: flex; gap: 8px; justify-content: center; margin-top: 10px; }
+.dot { width: 14px; height: 14px; border-radius: 50%; background: #33333d; }
+.dot.on { background: var(--blue); }
+.ctl.auto { flex: 1; }
+.ctl.auto.on { background: var(--blue); border-color: var(--blue); color: #06121f; font-weight: 700; }
+.live-notes { color: var(--muted); font-size: 1.2rem; }
