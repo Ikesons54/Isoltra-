@@ -7,11 +7,19 @@ const base = process.env.BASE_PATH || '/'
 
 export default defineConfig({
   base,
+  define: {
+    __BUILD__: JSON.stringify(new Date().toISOString())
+  },
   plugins: [
     react(),
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['icon.svg'],
+      workbox: {
+        skipWaiting: true,
+        clientsClaim: true,
+        cleanupOutdatedCaches: true
+      },
       manifest: {
         name: 'Isoltra',
         short_name: 'Isoltra',
@@ -22,9 +30,7 @@ export default defineConfig({
         orientation: 'any',
         start_url: base,
         scope: base,
-        icons: [
-          { src: 'icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any maskable' }
-        ]
+        icons: [{ src: 'icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any maskable' }]
       }
     })
   ]
