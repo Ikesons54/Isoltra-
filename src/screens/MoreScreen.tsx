@@ -30,11 +30,22 @@ export default function MoreScreen() {
   const doImport = async (text: string) => {
     try {
       const r = await importBackup(text)
-      say(`Imported ${r.songs} song(s) and ${r.services} service(s).`)
+      say(`Imported ${r.songs} song(s), ${r.services} service(s) and ${r.hymnals} hymnal(s).`)
       setPasted('')
     } catch (e) {
       say((e as Error).message)
     }
+  }
+
+  const checkUpdate = async () => {
+    say('Checking for updates…')
+    try {
+      const reg = await navigator.serviceWorker?.getRegistration()
+      await reg?.update()
+    } catch {
+      /* offline: just reload what we have */
+    }
+    setTimeout(() => window.location.reload(), 600)
   }
 
   const onFile = async (file: File | undefined) => {
@@ -65,6 +76,10 @@ export default function MoreScreen() {
       </button>
 
       {message && <p className="notice">{message}</p>}
+
+      <h2 className="small-head">App</h2>
+      <p className="muted hint">Updates install automatically when you open the app. Built {__BUILD__.slice(0, 16).replace('T', ' ')} UTC.</p>
+      <button className="play on" onClick={checkUpdate}>Check for updates</button>
 
       <p className="powered">Isoltra · Powered by FWX plus</p>
     </div>

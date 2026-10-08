@@ -2,10 +2,17 @@ import { useEffect, useState } from 'react'
 import { listSongs, seedIfFirstRun } from '../db/db'
 import type { KeyName } from '../engine'
 import type { Song } from '../types'
+import { HymnalForm, HymnalList, HymnList } from './HymnalsPanel'
 import SongDetail from './SongDetail'
 import SongEditor from './SongEditor'
 
-type View = { name: 'list' } | { name: 'detail'; id: string } | { name: 'edit'; id?: string }
+type View =
+  | { name: 'list' }
+  | { name: 'detail'; id: string }
+  | { name: 'edit'; id?: string; hymnalId?: string }
+  | { name: 'hymnal'; id: string }
+  | { name: 'hymnalNew' }
+
 type Sub = 'songs' | 'hymnals' | 'chants' | 'pads' | 'saved'
 
 const SUBS: { id: Sub; label: string }[] = [
@@ -18,6 +25,7 @@ const SUBS: { id: Sub; label: string }[] = [
 
 export default function LibraryScreen({ onPlay }: { onPlay: (id: string, key: KeyName) => void }) {
   const [view, setView] = useState<View>({ name: 'list' })
+  const [back, setBack] = useState<View>({ name: 'list' })
   const [sub, setSub] = useState<Sub>('songs')
   const [songs, setSongs] = useState<Song[]>([])
   const [query, setQuery] = useState('')
@@ -28,16 +36,21 @@ export default function LibraryScreen({ onPlay }: { onPlay: (id: string, key: Ke
     seedIfFirstRun()
       .then(listSongs)
       .then(s => {
-        setSongs(s)
+        setSongs(s.filter(x => !x.hymnalId))
         setReady(true)
       })
   }, [view.name])
+
+  const openDetail = (id: string) => {
+    setBack(view)
+    setView({ name: 'detail', id })
+  }
 
   if (view.name === 'detail') {
     return (
       <SongDetail
         id={view.id}
-        onBack={() => setView({ name: 'list' })}
+        onBack={() => setView(back)}
         onEdit={() => setView({ name: 'edit', id: view.id })}
         onPlay={onPlay}
       />
@@ -47,8 +60,33 @@ export default function LibraryScreen({ onPlay }: { onPlay: (id: string, key: Ke
     return (
       <SongEditor
         id={view.id}
-        onCancel={() => setView(view.id ? { name: 'detail', id: view.id } : { name: 'list' })}
-        onSaved={id => setView({ name: 'detail', id })}
+        hymnalId={view.hymnalId}
+        onCancel={() => setView(view.id ? { name: 'detail', id: view.id } : view.hymnalId ? { name: 'hymnal', id: view.hymnalId } : { name: 'list' })}
+        onSaved={id => {
+          setBack(view.hymnalId ? { name: 'hymnal', id: view.hymnalId } : view.id ? back : { name: 'list' })
+          setView({ name: 'detail', id })
+        }}
+      />
+    )
+  }
+  if (view.name === 'hymnal') {
+    return (
+      <HymnList
+        id={view.id}
+        onBack={() => {
+          setSub('hymnals')
+          setView({ name: 'list' })
+        }}
+        onOpenHymn={openDetail}
+        onAddHymn={() => setView({ name: 'edit', hymnalId: view.id })}
+      />
+    )
+  }
+  if (view.name === 'hymnalNew') {
+    return (
+      <HymnalForm
+        onCancel={() => setView({ name: 'list' })}
+        onSaved={id => setView({ name: 'hymnal', id })}
       />
     )
   }
@@ -67,7 +105,11 @@ export default function LibraryScreen({ onPlay }: { onPlay: (id: string, key: Ke
         ))}
       </div>
 
-      {sub !== 'songs' && <p className="muted">Coming soon.</p>}
+      {(sub === 'chants' || sub === 'pads' || sub === 'saved') && <p className="muted">Coming soon.</p>}
+
+      {sub === 'hymnals' && (
+        <HymnalList onOpen={id => setView({ name: 'hymnal', id })} onNew={() => setView({ name: 'hymnalNew' })} />
+      )}
 
       {sub === 'songs' && (
         <>
@@ -86,7 +128,7 @@ export default function LibraryScreen({ onPlay }: { onPlay: (id: string, key: Ke
           <ul className="list">
             {shown.map(s => (
               <li key={s.id}>
-                <button className="list-item" onClick={() => setView({ name: 'detail', id: s.id })}>
+                <button className="list-item" onClick={() => openDetail(s.id)}>
                   <span className="li-title">{s.title}</span>
                   <span className="li-sub">
                     Key {s.key}

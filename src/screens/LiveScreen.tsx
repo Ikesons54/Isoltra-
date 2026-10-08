@@ -3,7 +3,7 @@ import type { TouchEvent } from 'react'
 import { buildProgression, KEYS } from '../engine'
 import type { KeyName, MusicalEvent } from '../engine'
 import { getService, getSong, listServices, listSongs, seedIfFirstRun } from '../db/db'
-import { getPref, setPref } from '../songs'
+import { getPref, setPref, songLabel } from '../songs'
 import type { DisplayMode } from '../songs'
 import type { Service, Song } from '../types'
 
@@ -175,7 +175,7 @@ function Picker({ onPick }: { onPick: (t: LiveTarget) => void }) {
         {songs.map(s => (
           <li key={s.id}>
             <button className="list-item" onClick={() => onPick({ kind: 'song', id: s.id, key: s.key })}>
-              <span className="li-title">{s.title}</span>
+              <span className="li-title">{songLabel(s)}</span>
               <span className="li-sub">Key {s.key}</span>
             </button>
           </li>

@@ -79,8 +79,10 @@ export default function SongDetail({ id, onBack, onEdit, onPlay }: Props) {
         </div>
       </div>
 
+      {song.hymnNumber !== undefined && <p className="muted hint">Hymn {song.hymnNumber}</p>}
       <h1 className="song-title">{song.title}</h1>
-      {song.artist && <p className="muted">{song.artist}</p>}
+      {song.firstLine && <p className="muted"><em>{song.firstLine}</em></p>}
+      {song.artist && <p className="muted hint">{song.artist}</p>}
 
       <div className="row gap center">
         <label className="key-label">

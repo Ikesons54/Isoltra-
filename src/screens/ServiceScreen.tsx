@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { KEYS } from '../engine'
 import type { KeyName } from '../engine'
 import { deleteService, getService, listServices, listSongs, saveService, seedIfFirstRun } from '../db/db'
-import { newId, normalizeInput } from '../songs'
+import { newId, normalizeInput, songLabel } from '../songs'
 import type { Service, ServiceItem, Song } from '../types'
 
 const SLOTS = ['Prelude', 'Opening', 'Praise', 'Worship', 'Prayer', 'Preaching', 'Altar', 'Offering', 'Closing']
@@ -301,7 +301,7 @@ function ItemForm({ serviceId, itemId, onDone }: { serviceId: string; itemId?: s
           <option value="">— none —</option>
           {songs.map(s => (
             <option key={s.id} value={s.id}>
-              {s.title} ({s.key})
+              {songLabel(s)} ({s.key})
             </option>
           ))}
         </select>
