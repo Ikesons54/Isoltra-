@@ -1,4 +1,4 @@
-import type { Hymnal, Pattern, PatternKind, Service, Song } from '../types'
+import type { Hymnal, Pattern, PatternKind, SavedItem, SavedKind, Service, Song } from '../types'
 import { KEYS } from '../engine'
 import { BUILTIN_HYMNAL, HYMN_SEED_VERSION, PD_HYMNS } from '../data/publicDomainHymns'
 import { PATTERN_SEED_VERSION, STARTER_PATTERNS } from '../data/starterPatterns'
@@ -9,19 +9,21 @@ const SONGS = 'songs'
 const SERVICES = 'services'
 const HYMNALS = 'hymnals'
 const PATTERNS = 'patterns'
+const SAVED = 'saved'
 
 let dbPromise: Promise<IDBDatabase> | null = null
 
 function openDb(): Promise<IDBDatabase> {
   if (!dbPromise) {
     dbPromise = new Promise((resolve, reject) => {
-      const req = indexedDB.open(DB_NAME, 4)
+      const req = indexedDB.open(DB_NAME, 5)
       req.onupgradeneeded = () => {
         const db = req.result
         if (!db.objectStoreNames.contains(SONGS)) db.createObjectStore(SONGS, { keyPath: 'id' })
         if (!db.objectStoreNames.contains(SERVICES)) db.createObjectStore(SERVICES, { keyPath: 'id' })
         if (!db.objectStoreNames.contains(HYMNALS)) db.createObjectStore(HYMNALS, { keyPath: 'id' })
         if (!db.objectStoreNames.contains(PATTERNS)) db.createObjectStore(PATTERNS, { keyPath: 'id' })
+        if (!db.objectStoreNames.contains(SAVED)) db.createObjectStore(SAVED, { keyPath: 'id' })
       }
       req.onsuccess = () => resolve(req.result)
       req.onerror = () => reject(req.error)
@@ -192,12 +194,36 @@ export async function seedPatternsIfNeeded(): Promise<void> {
   }
 }
 
+
+// ---------- Saved (bookmarks) ----------
+
+export async function listSaved(): Promise<SavedItem[]> {
+  const all = await run<SavedItem[]>(SAVED, 'readonly', s => s.getAll() as IDBRequest<SavedItem[]>)
+  return all.sort((a, b) => b.savedAt - a.savedAt)
+}
+
+export async function isSaved(kind: SavedKind, refId: string): Promise<boolean> {
+  const hit = await run<SavedItem | undefined>(SAVED, 'readonly', s => s.get(`${kind}:${refId}`) as IDBRequest<SavedItem | undefined>)
+  return !!hit
+}
+
+/** Returns true if the item is saved after the call. */
+export async function toggleSaved(kind: SavedKind, refId: string): Promise<boolean> {
+  const id = `${kind}:${refId}`
+  if (await isSaved(kind, refId)) {
+    await run(SAVED, 'readwrite', s => s.delete(id))
+    return false
+  }
+  await run(SAVED, 'readwrite', s => s.put({ id, kind, refId, savedAt: Date.now() }))
+  return true
+}
+
 // ---------- Backup ----------
 
 export async function exportBackup(): Promise<string> {
-  const [songs, services, hymnals, patterns] = await Promise.all([listSongs(), listServices(), listHymnals(), listPatterns()])
+  const [songs, services, hymnals, patterns, saved] = await Promise.all([listSongs(), listServices(), listHymnals(), listPatterns(), listSaved()])
   return JSON.stringify(
-    { app: 'isoltra', version: 4, exportedAt: new Date().toISOString(), songs, services, hymnals: hymnals.filter(h => !h.builtin), patterns },
+    { app: 'isoltra', version: 5, exportedAt: new Date().toISOString(), songs, services, hymnals: hymnals.filter(h => !h.builtin), patterns, saved },
     null,
     2
   )
@@ -257,6 +283,13 @@ export async function importBackup(text: string): Promise<{ songs: number; servi
   let services = 0
   let hymnals = 0
   let patterns = 0
+  if (Array.isArray(data.saved)) {
+    for (const x of data.saved) {
+      if (x && typeof x.id === 'string' && typeof x.refId === 'string' && (x.kind === 'song' || x.kind === 'pattern')) {
+        await run(SAVED, 'readwrite', st => st.put(x))
+      }
+    }
+  }
   if (Array.isArray(data.patterns)) {
     for (const p of data.patterns) {
       if (isPattern(p)) {
