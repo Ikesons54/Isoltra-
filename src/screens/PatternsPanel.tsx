@@ -6,6 +6,7 @@ import { deletePattern, getPattern, isSaved, listPatterns, savePattern, seedPatt
 import { getPref, newId, normalizeInput, setPref } from '../songs'
 import type { DisplayMode } from '../songs'
 import type { Difficulty, Pattern, PatternKind } from '../types'
+import ChartStrip from './ChartStrip'
 
 type View = { name: 'list' } | { name: 'detail'; id: string } | { name: 'edit'; id?: string }
 
@@ -248,35 +249,7 @@ export function PatternDetail({
         Show voicings (left hand / right hand)
       </label>
 
-      <div className="cards">
-        {shownEvents.map((e, i) => (
-          <div className="card" key={i}>
-            {mode === 'chords' && (
-              <>
-                <div className="big">{e.chord}</div>
-                <div className="nts">{e.notes.join(' ')}</div>
-              </>
-            )}
-            {mode === 'numbers' && <div className="big">{e.label}</div>}
-            {mode === 'solfa' && <div className="big">{e.solfa}</div>}
-            {mode === 'notes' && <div className="big">{e.root}</div>}
-            {mode === 'combined' && (
-              <>
-                <div className="num">{e.label}</div>
-                <div className="big">{e.chord}</div>
-                <div className="sol">{e.solfa}</div>
-                <div className="nts">{e.notes.join(' ')}</div>
-              </>
-            )}
-            {voicings && voiced[i] && (
-              <div className="voicing">
-                <div>LH {voiced[i].lh}</div>
-                <div>RH {voiced[i].rh.join('-')}</div>
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
+      <ChartStrip events={shownEvents} mode={mode} voiced={voicings ? voiced : undefined} />
       {voicings && (
         <p className="muted hint">
           Right-hand shapes are chosen so your hand moves as little as possible between chords. Treat them as suggestions.

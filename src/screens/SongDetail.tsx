@@ -5,6 +5,7 @@ import { deleteSong, getSong, isSaved, toggleSaved } from '../db/db'
 import { getPref, setPref } from '../songs'
 import type { DisplayMode } from '../songs'
 import type { Song } from '../types'
+import ChartStrip from './ChartStrip'
 
 const MODES: { id: DisplayMode; label: string }[] = [
   { id: 'chords', label: 'Chords' },
@@ -139,37 +140,11 @@ export default function SongDetail({ id, onBack, onEdit, onPlay }: Props) {
         Show voicings (left hand / right hand)
       </label>
 
-      <div className="cards">
-        {events.map((e, i) => (
-          <div className="card" key={i}>
-            {mode === 'chords' && (
-              <>
-                <div className="big">{e.chord}</div>
-                <div className="nts">{e.notes.join(' ')}</div>
-              </>
-            )}
-            {mode === 'numbers' && <div className="big">{e.label}</div>}
-            {mode === 'solfa' && <div className="big">{e.solfa}</div>}
-            {mode === 'notes' && <div className="big">{e.root}</div>}
-            {mode === 'combined' && (
-              <>
-                <div className="num">{e.label}</div>
-                <div className="big">{e.chord}</div>
-                <div className="sol">{e.solfa}</div>
-                <div className="nts">{e.notes.join(' ')}</div>
-              </>
-            )}
-            {voicings && voiced[i] && (
-              <div className="voicing">
-                <div>LH {voiced[i].lh}</div>
-                <div>RH {voiced[i].rh.join('-')}</div>
-              </div>
-            )}
-            {section?.cues?.[i] && <div className="cue">{section.cues[i]}</div>}
-          </div>
-        ))}
-        {events.length === 0 && <p className="muted">No progression in this section.</p>}
-      </div>
+      {events.length === 0 ? (
+        <p className="muted">No progression in this section.</p>
+      ) : (
+        <ChartStrip events={events} mode={mode} voiced={voicings ? voiced : undefined} cues={section?.cues} />
+      )}
     </div>
   )
 }

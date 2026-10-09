@@ -6,6 +6,7 @@ import { getPattern, getService, getSong, listPatterns, listServices, listSongs,
 import { getPref, setPref, songLabel } from '../songs'
 import type { DisplayMode } from '../songs'
 import type { Pattern, Service, Song } from '../types'
+import { useViewportWidth } from '../useViewportWidth'
 
 export type LiveTarget =
   | { kind: 'song'; id: string; key: KeyName }
@@ -339,6 +340,7 @@ function Stage({
   const [sync, setSync] = useState(0)
 
   const touchX = useRef<number | null>(null)
+  const width = useViewportWidth()
   const audioRef = useRef<AudioContext | null>(null)
 
   const steps = buildSteps(plan, key)
@@ -508,6 +510,25 @@ function Stage({
   const cur = steps[Math.min(index, last)]
   const nxt = index < last ? steps[index + 1] : plan.loop ? steps[0] : null
   const atEnd = index >= last && !plan.loop
+
+  // timeline: what you just played, now, and what is coming (more of it on wide screens)
+  const ahead = width >= 900 ? 4 : width >= 640 ? 3 : 2
+  const behind = width >= 640 ? 2 : 1
+  const here = Math.min(index, last)
+  const upcoming: Step[] = []
+  for (let k = 1; k <= ahead; k++) {
+    let j = here + k
+    if (j > last) {
+      if (plan.loop) j = j % (last + 1)
+      else break
+    }
+    upcoming.push(steps[j])
+  }
+  const before: Step[] = []
+  for (let k = behind; k >= 1; k--) {
+    if (here - k >= 0) before.push(steps[here - k])
+  }
+  const stepText = (st: Step) => (mode === 'combined' ? st.ev.chord : mainText(st.ev, mode))
 
   const groupLabels: string[] = plan.single ? plan.items[0].sections.map(s => s.name) : plan.items.map(i => i.chip)
   const jump = (group: number) => {
@@ -706,48 +727,58 @@ function Stage({
         </div>
       )}
 
-      <div className="live-current">
-        <div className="live-where">{where}</div>
-        {mode === 'combined' ? (
-          <>
-            <div className="live-num">{cur.ev.label}</div>
-            <div className="live-main">{cur.ev.chord}</div>
-            <div className="live-sol">{cur.ev.solfa}</div>
-            <div className="live-notes">{cur.ev.notes.join(' ')}</div>
-          </>
-        ) : (
-          <>
-            <div className="live-main">{mainText(cur.ev, mode)}</div>
-            {mode === 'chords' && <div className="live-notes">{cur.ev.notes.join(' ')}</div>}
-          </>
-        )}
-        {voicing && voiced[Math.min(index, last)] && (
-          <div className="live-voicing">
-            LH {voiced[Math.min(index, last)].lh} · RH {voiced[Math.min(index, last)].rh.join('-')}
-          </div>
-        )}
-        {cur.cue && <div className="live-cue">{cur.cue}</div>}
-        {auto && (
-          <div className="beats">
-            {Array.from({ length: beatsPerChord }, (_, i) => (
-              <span key={i} className={i + 1 === beat ? 'dot on' : 'dot'} />
-            ))}
-          </div>
-        )}
+      <div className="tl">
+        <div className="tl-side">
+          {before.map((st, i) => (
+            <div className="tl-item" key={`b${i}`} style={{ opacity: 0.3 + 0.18 * i }}>{stepText(st)}</div>
+          ))}
+        </div>
+
+        <div className="tl-current">
+          <div className="live-where">{where}</div>
+          {mode === 'combined' ? (
+            <>
+              <div className="live-num">{cur.ev.label}</div>
+              <div className="live-main">{cur.ev.chord}</div>
+              <div className="live-sol">{cur.ev.solfa}</div>
+              <div className="live-notes">{cur.ev.notes.join(' ')}</div>
+            </>
+          ) : (
+            <>
+              <div className="live-main">{mainText(cur.ev, mode)}</div>
+              {mode === 'chords' && <div className="live-notes">{cur.ev.notes.join(' ')}</div>}
+            </>
+          )}
+          {voicing && voiced[here] && (
+            <div className="live-voicing">
+              LH {voiced[here].lh} · RH {voiced[here].rh.join('-')}
+            </div>
+          )}
+          {cur.cue && <div className="live-cue">{cur.cue}</div>}
+          {auto && (
+            <div className="beats">
+              {Array.from({ length: beatsPerChord }, (_, i) => (
+                <span key={i} className={i + 1 === beat ? 'dot on' : 'dot'} />
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="tl-side">
+          {upcoming.map((st, i) => (
+            <div className="tl-item" key={`a${i}`} style={{ opacity: Math.max(0.3, 0.85 - 0.18 * i) }}>{stepText(st)}</div>
+          ))}
+        </div>
       </div>
 
-      <div className="live-next">
-        <span className="live-next-label">NEXT</span>
+      <div className="live-nextline">
         {nxt ? (
           <>
-            <span className="live-next-val">
-              {mode === 'combined' ? `${nxt.ev.chord} · ${nxt.ev.label}` : mainText(nxt.ev, mode)}
-            </span>
             {nextTag && <span className="live-next-sec">{nextTag}</span>}
-            {nxt.cue && <span className="live-next-cue">{nxt.cue}</span>}
+            {nxt.cue && <span className="live-next-cue">next cue: {nxt.cue}</span>}
           </>
         ) : (
-          <span className="live-next-val">End of {plan.single ? 'song' : 'service'}</span>
+          <span className="live-next-sec">End of {plan.single ? 'song' : 'service'}</span>
         )}
       </div>
 
