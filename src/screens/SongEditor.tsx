@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { KEYS } from '../engine'
+import { buildProgression, KEYS } from '../engine'
 import type { KeyName } from '../engine'
 import { getSong, saveSong } from '../db/db'
 import { newId, normalizeInput, SECTION_NAMES } from '../songs'
@@ -9,6 +9,7 @@ interface DraftSection {
   id: string
   name: string
   text: string
+  cues: string[]
 }
 
 interface Props {
@@ -25,7 +26,7 @@ export default function SongEditor({ id, hymnalId, onCancel, onSaved }: Props) {
   const [title, setTitle] = useState('')
   const [artist, setArtist] = useState('')
   const [key, setKey] = useState<KeyName>('F')
-  const [sections, setSections] = useState<DraftSection[]>([{ id: newId(), name: 'Verse', text: '' }])
+  const [sections, setSections] = useState<DraftSection[]>([{ id: newId(), name: 'Verse', text: '', cues: [] }])
   const [number, setNumber] = useState('')
   const [bpm, setBpm] = useState('')
   const [timeSig, setTimeSig] = useState('')
@@ -44,7 +45,7 @@ export default function SongEditor({ id, hymnalId, onCancel, onSaved }: Props) {
         setBpm(s.bpm ? String(s.bpm) : '')
         setTimeSig(s.timeSig ?? '')
         setFirstLine(s.firstLine ?? '')
-        setSections(s.sections.map(x => ({ id: x.id, name: x.name, text: x.numbers })))
+        setSections(s.sections.map(x => ({ id: x.id, name: x.name, text: x.numbers, cues: x.cues ?? [] })))
       }
       setLoaded(true)
     })
@@ -54,6 +55,27 @@ export default function SongEditor({ id, hymnalId, onCancel, onSaved }: Props) {
 
   const owner = existing?.hymnalId ?? hymnalId
   const isHymn = !!owner
+
+  const setCue = (sid: string, index: number, value: string) =>
+    setSections(list =>
+      list.map(s => {
+        if (s.id !== sid) return s
+        const cues = [...s.cues]
+        while (cues.length <= index) cues.push('')
+        cues[index] = value
+        return { ...s, cues }
+      })
+    )
+
+  /** Chords of a section, for the cue-word rows (empty while the text cannot be read yet) */
+  const previewChords = (text: string) => {
+    if (!text.trim()) return []
+    try {
+      return buildProgression(key, normalizeInput(text, key))
+    } catch {
+      return []
+    }
+  }
 
   const update = (sid: string, patch: Partial<DraftSection>) =>
     setSections(list => list.map(s => (s.id === sid ? { ...s, ...patch } : s)))
@@ -71,11 +93,19 @@ export default function SongEditor({ id, hymnalId, onCancel, onSaved }: Props) {
       hymnNumber = Number(number.trim())
       if (!Number.isInteger(hymnNumber) || hymnNumber < 0) return setError('Hymn number must be a whole number.')
     }
-    const out: { id: string; name: string; numbers: string }[] = []
+    const out: { id: string; name: string; numbers: string; cues?: string[] }[] = []
     for (const s of sections) {
       if (!s.text.trim()) continue
       try {
-        out.push({ id: s.id, name: s.name.trim() || 'Section', numbers: normalizeInput(s.text, key) })
+        const numbers = normalizeInput(s.text, key)
+        const count = numbers.split(' ').filter(Boolean).length
+        const cues = s.cues.slice(0, count).map(c => c.trim())
+        out.push({
+          id: s.id,
+          name: s.name.trim() || 'Section',
+          numbers,
+          ...(cues.some(c => c) ? { cues } : {})
+        })
       } catch (e) {
         return setError(`${s.name || 'Section'}: ${(e as Error).message}`)
       }
@@ -180,6 +210,25 @@ export default function SongEditor({ id, hymnalId, onCancel, onSaved }: Props) {
             onChange={e => update(s.id, { text: e.target.value })}
             placeholder="1 4 6 5"
           />
+          {previewChords(s.text).length > 0 && (
+            <div className="cues">
+              <p className="muted hint">
+                Cue words (optional): a few words to tell you when to change chord, such as "on the word Lord". Short notes
+                only, not full lyrics.
+              </p>
+              {previewChords(s.text).map((ev, i) => (
+                <label className="cue-row" key={i}>
+                  <span className="cue-chord">{ev.chord}</span>
+                  <input
+                    maxLength={40}
+                    value={s.cues[i] ?? ''}
+                    onChange={e => setCue(s.id, i, e.target.value)}
+                    placeholder="cue"
+                  />
+                </label>
+              ))}
+            </div>
+          )}
         </div>
       ))}
       <datalist id="section-names">
@@ -188,7 +237,7 @@ export default function SongEditor({ id, hymnalId, onCancel, onSaved }: Props) {
         ))}
       </datalist>
 
-      <button className="link" onClick={() => setSections(l => [...l, { id: newId(), name: '', text: '' }])}>
+      <button className="link" onClick={() => setSections(l => [...l, { id: newId(), name: '', text: '', cues: [] }])}>
         + Add section
       </button>
 

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { TouchEvent } from 'react'
-import { buildProgression, KEYS } from '../engine'
-import type { KeyName, MusicalEvent } from '../engine'
+import { buildProgression, KEYS, voiceProgression } from '../engine'
+import type { KeyName, MusicalEvent, Voicing } from '../engine'
 import { getPattern, getService, getSong, listPatterns, listServices, listSongs, seedIfFirstRun, seedPatternsIfNeeded } from '../db/db'
 import { getPref, setPref, songLabel } from '../songs'
 import type { DisplayMode } from '../songs'
@@ -18,7 +18,7 @@ interface PlanItem {
   key: KeyName
   bpm?: number
   timeSig?: string
-  sections: { name: string; numbers: string }[]
+  sections: { name: string; numbers: string; cues?: string[] }[]
 }
 
 interface Plan {
@@ -37,6 +37,7 @@ interface Step {
   group: number
   pos: number
   total: number
+  cue?: string
   ev: MusicalEvent
 }
 
@@ -96,7 +97,7 @@ async function loadPlan(target: LiveTarget): Promise<Plan | null> {
   let skipped = 0
   for (const it of service.items) {
     const song = it.songId ? songs.find(s => s.id === it.songId) : undefined
-    let sections: { name: string; numbers: string }[] = []
+    let sections: { name: string; numbers: string; cues?: string[] }[] = []
     if (song) sections = song.sections
     else if (it.numbers) sections = [{ name: it.slot || 'Progression', numbers: it.numbers }]
     if (sections.length === 0) {
@@ -126,6 +127,7 @@ function buildSteps(plan: Plan, keyOverride: KeyName): Step[] {
           section: section.name,
           group: plan.single ? sectionIndex : itemIndex,
           pos: i + 1,
+          cue: section.cues?.[i] || undefined,
           total: events.length,
           ev
         })
@@ -133,6 +135,22 @@ function buildSteps(plan: Plan, keyOverride: KeyName): Step[] {
     })
   })
   return steps
+}
+
+/** Left/right hand shapes for every step, voice-led within each item of the plan. */
+function voiceSteps(steps: Step[], plan: Plan, keyOverride: KeyName): Voicing[] {
+  const out: Voicing[] = new Array(steps.length)
+  plan.items.forEach((item, itemIndex) => {
+    const idx: number[] = []
+    steps.forEach((st, i) => {
+      if (st.itemIndex === itemIndex) idx.push(i)
+    })
+    const voiced = voiceProgression(idx.map(i => steps[i].ev), plan.single ? keyOverride : item.key)
+    idx.forEach((i, j) => {
+      out[i] = voiced[j]
+    })
+  })
+  return out
 }
 
 /** Chords: the chord symbol. Notes: one single note (the root). */
@@ -308,6 +326,7 @@ function Stage({
   const [mode, setMode] = useState<DisplayMode>(getPref('liveMode', 'chords') as DisplayMode)
   const [size, setSize] = useState<Size>(getPref('liveSize', 'M') as Size)
   const [wake, setWake] = useState(getPref('liveWake', '1') === '1')
+  const [voicing, setVoicing] = useState(getPref('liveVoicing', '0') === '1')
   const [panel, setPanel] = useState(false)
 
   // auto-advance (off until you start it)
@@ -324,6 +343,7 @@ function Stage({
 
   const steps = buildSteps(plan, key)
   const last = Math.max(steps.length - 1, 0)
+  const voiced = voicing ? voiceSteps(steps, plan, key) : []
   const beatsPerChord = Math.max(1, Math.round((SIGNATURES[sig] ?? 4) * Number(bars)))
 
   const paramsRef = useRef({ last, loop: plan.loop })
@@ -661,6 +681,17 @@ function Stage({
             />
             Keep screen on
           </label>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={voicing}
+              onChange={e => {
+                setVoicing(e.target.checked)
+                setPref('liveVoicing', e.target.checked ? '1' : '0')
+              }}
+            />
+            Show hand voicing (LH / RH)
+          </label>
           <button className="play on" onClick={enterStage}>Enter stage mode</button>
         </div>
       )}
@@ -690,6 +721,12 @@ function Stage({
             {mode === 'chords' && <div className="live-notes">{cur.ev.notes.join(' ')}</div>}
           </>
         )}
+        {voicing && voiced[Math.min(index, last)] && (
+          <div className="live-voicing">
+            LH {voiced[Math.min(index, last)].lh} · RH {voiced[Math.min(index, last)].rh.join('-')}
+          </div>
+        )}
+        {cur.cue && <div className="live-cue">{cur.cue}</div>}
         {auto && (
           <div className="beats">
             {Array.from({ length: beatsPerChord }, (_, i) => (
@@ -707,6 +744,7 @@ function Stage({
               {mode === 'combined' ? `${nxt.ev.chord} · ${nxt.ev.label}` : mainText(nxt.ev, mode)}
             </span>
             {nextTag && <span className="live-next-sec">{nextTag}</span>}
+            {nxt.cue && <span className="live-next-cue">{nxt.cue}</span>}
           </>
         ) : (
           <span className="live-next-val">End of {plan.single ? 'song' : 'service'}</span>

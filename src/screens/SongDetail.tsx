@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { buildProgression, KEYS } from '../engine'
+import { buildProgression, KEYS, voiceProgression } from '../engine'
 import type { KeyName } from '../engine'
 import { deleteSong, getSong, isSaved, toggleSaved } from '../db/db'
 import { getPref, setPref } from '../songs'
@@ -28,6 +28,7 @@ export default function SongDetail({ id, onBack, onEdit, onPlay }: Props) {
   const [sectionId, setSectionId] = useState('')
   const [mode, setMode] = useState<DisplayMode>(getPref('display', 'chords') as DisplayMode)
   const [saved, setSaved] = useState(false)
+  const [voicings, setVoicings] = useState(getPref('songVoicings', '0') === '1')
 
   useEffect(() => {
     isSaved('song', id).then(setSaved)
@@ -61,6 +62,8 @@ export default function SongDetail({ id, onBack, onEdit, onPlay }: Props) {
       events = []
     }
   }
+
+  const voiced = voicings ? voiceProgression(events, viewKey) : []
 
   const pickMode = (m: DisplayMode) => {
     setMode(m)
@@ -124,6 +127,18 @@ export default function SongDetail({ id, onBack, onEdit, onPlay }: Props) {
         ))}
       </div>
 
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={voicings}
+          onChange={e => {
+            setVoicings(e.target.checked)
+            setPref('songVoicings', e.target.checked ? '1' : '0')
+          }}
+        />
+        Show voicings (left hand / right hand)
+      </label>
+
       <div className="cards">
         {events.map((e, i) => (
           <div className="card" key={i}>
@@ -144,6 +159,13 @@ export default function SongDetail({ id, onBack, onEdit, onPlay }: Props) {
                 <div className="nts">{e.notes.join(' ')}</div>
               </>
             )}
+            {voicings && voiced[i] && (
+              <div className="voicing">
+                <div>LH {voiced[i].lh}</div>
+                <div>RH {voiced[i].rh.join('-')}</div>
+              </div>
+            )}
+            {section?.cues?.[i] && <div className="cue">{section.cues[i]}</div>}
           </div>
         ))}
         {events.length === 0 && <p className="muted">No progression in this section.</p>}
