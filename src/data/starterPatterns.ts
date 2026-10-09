@@ -1,6 +1,6 @@
 import type { Difficulty, Pattern, PatternKind } from '../types'
 
-export const PATTERN_SEED_VERSION = 1
+export const PATTERN_SEED_VERSION = 2
 
 export const MOODS = [
   'peaceful', 'deep', 'intimate', 'prayer', 'intercession', 'reflective', 'preaching', 'build', 'tension',
@@ -49,6 +49,14 @@ export const STARTER_PATTERNS: Pattern[] = [
     'Open, strong movement for declarations and victory moments.'),
   make('pad-altar-call', 'pad', 'Altar Call Bed', '1 4 1 5', ['altar', 'prayer'], 66, 'Beginner',
     'Steady, simple bed that is easy to hold while people respond.'),
+  make('pad-soft-preaching', 'pad', 'Soft Preaching Bed', '1 6 2 5', ['peaceful', 'preaching'], 60, 'Intermediate',
+    'Quiet, circular bed that sits under the message without drawing attention.'),
+  make('pad-deep-worship', 'pad', 'Deep Worship Bed', '4 1 5 6', ['deep', 'worship'], 60, 'Intermediate',
+    'Starts on the 4 for a wide, open worship feel.'),
+  make('pad-altar-prayer', 'pad', 'Altar Prayer Pad', '4 1 5 1', ['altar', 'prayer', 'peaceful'], 62, 'Beginner',
+    'Calm, resolving loop for altar ministry and prayer.'),
+  make('pad-spontaneous-flow', 'pad', 'Spontaneous Flow', '1 5 4 1', ['spontaneous', 'worship', 'intimate'], 66, 'Beginner',
+    'Easy loop to hold while the worship leader flows freely.'),
   make('chant-worship-01', 'chant', 'Worship Chant 01', '1 5 2 4 1', ['deep', 'worship'], 66, 'Beginner',
     'Slow chant-style loop: 1 5 2 4 1. Repeat as long as needed.'),
   make('chant-prayer', 'chant', 'Prayer Chant', '1 4 1 5', ['prayer', 'intercession'], 64, 'Beginner',
