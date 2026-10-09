@@ -151,3 +151,13 @@ em { color: var(--muted); }
 .splash-tag { color: var(--muted); font-size: .95rem; }
 .splash-powered { margin-top: 28px; color: var(--muted); font-size: .8rem; letter-spacing: .08em; }
 @keyframes splash-out { to { opacity: 0; visibility: hidden; } }
+
+/* ---------- Cue words and voicing in Live ---------- */
+.cues { margin-top: 6px; }
+.cue-row { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
+.cue-chord { min-width: 52px; font-weight: 700; color: var(--gold); }
+.cue-row input { flex: 1; padding: 8px 10px; font-size: .95rem; }
+.card .cue { margin-top: 6px; font-size: .78rem; color: var(--text); font-style: italic; }
+.live-cue { font-size: 1.6rem; font-style: italic; color: var(--text); margin-top: 4px; }
+.live-voicing { color: var(--blue); font-size: 1.15rem; margin-top: 2px; }
+.live-next-cue { color: var(--muted); font-size: .95rem; font-style: italic; }

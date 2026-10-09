@@ -5,6 +5,8 @@ export interface SongSection {
   name: string
   /** Key-independent progression, e.g. "1 4 6 5" */
   numbers: string
+  /** Short cue words, one per chord (position matches the progression). Not full lyrics. */
+  cues?: string[]
 }
 
 export interface Song {
