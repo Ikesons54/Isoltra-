@@ -37,8 +37,12 @@ export interface Hymnal {
   createdAt: number
 }
 
+export type ItemType = 'Song' | 'Hymn' | 'Chant' | 'Prayer' | 'Preaching' | 'Pad' | 'Custom'
+
 export interface ServiceItem {
   id: string
+  /** What kind of item this is (older items may not have one) */
+  type?: ItemType
   /** Where it sits in the service: Opening, Praise, Worship, Prayer, Preaching, Altar, Closing... */
   slot: string
   title: string
@@ -79,4 +83,14 @@ export interface Pattern {
   description: string
   builtin?: boolean
   createdAt: number
+}
+
+export type SavedKind = 'song' | 'pattern'
+
+/** A bookmarked song, hymn, chant or pad */
+export interface SavedItem {
+  id: string
+  kind: SavedKind
+  refId: string
+  savedAt: number
 }
