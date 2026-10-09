@@ -1,20 +1,26 @@
-# Isoltra roadmap (kept in the repo so nothing gets lost)
+# Isoltra roadmap
 
-## Done (MVP so far)
-Music engine, song library, hymnals (free public-domain starter set), service builder,
-live stage mode (auto-advance by tempo and time signature), chants and pads with voicings.
+## MVP (done)
+Music engine, songs, hymnals (free starter set), chants and pads with moods and voicings,
+service builder with item types, live stage mode with auto-advance, Home search,
+Recently played, Saved, "Chords to play while..." shortcut, splash, app icons, backup and restore.
 
-## Next
-- Song bank: searchable catalogue of popular worship songs (title, artist, origin, key, tempo)
-  with filters by artist, country and mood. Chords added by your own musicians.
-  No lyrics or copied chord charts. Bulk import (CSV/JSON) so the bank can grow to 1000+.
-- Per-item tempo during a service run.
-- Slash chords (F/A) and more chord types.
+## Testing (next)
+Real musicians use it for a few services. Fix what they struggle with.
 
-## Later versions
-- Rehearsal mode: bring a song and learn it from beginner to advanced
-  (triads, then 7ths and sus chords, then passing chords and advanced approaches), with a TRY IT exercise.
-- AI suggestions (passing chords, progressions) that query the music engine.
-- Community: turnarounds, lessons, verified teachers.
-- Shared services and band sync.
-- Real-time audio chord detection.
+## V2
+- Song bank: searchable catalogue (title, artist, country, key, tempo) with filters; chords added by your own musicians; no lyrics or copied charts; bulk CSV/JSON import
+- More Ghanaian gospel patterns and chants
+- Slash chords and more chord types (maj9, m9, add9, dim7)
+- Per-item tempo during a service
+- Rehearsal / Learn mode: learn a song from beginner to advanced, with TRY IT exercises
+- AI suggestions that query the music engine (passing chords, progressions)
+
+## V3
+Community: turnarounds, tutorials, verified teachers, comments and saves.
+
+## V4
+Real-time audio chord detection and singer following.
+
+## V5
+Voice commands, band sync, church/team accounts, shared live services, multi-instrument mode.
