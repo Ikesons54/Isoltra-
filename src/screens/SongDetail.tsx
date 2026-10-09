@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { buildProgression, KEYS } from '../engine'
 import type { KeyName } from '../engine'
-import { deleteSong, getSong } from '../db/db'
+import { deleteSong, getSong, isSaved, toggleSaved } from '../db/db'
 import { getPref, setPref } from '../songs'
 import type { DisplayMode } from '../songs'
 import type { Song } from '../types'
@@ -27,6 +27,11 @@ export default function SongDetail({ id, onBack, onEdit, onPlay }: Props) {
   const [viewKey, setViewKey] = useState<KeyName>('C')
   const [sectionId, setSectionId] = useState('')
   const [mode, setMode] = useState<DisplayMode>(getPref('display', 'chords') as DisplayMode)
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    isSaved('song', id).then(setSaved)
+  }, [id])
 
   useEffect(() => {
     getSong(id).then(s => {
@@ -74,6 +79,9 @@ export default function SongDetail({ id, onBack, onEdit, onPlay }: Props) {
       <div className="row between">
         <button className="link" onClick={onBack}>← Back</button>
         <div className="row gap">
+          <button className="link" onClick={async () => setSaved(await toggleSaved('song', song.id))}>
+            {saved ? '★ Saved' : '☆ Save'}
+          </button>
           <button className="link" onClick={onEdit}>Edit</button>
           <button className="link danger" onClick={remove}>Delete</button>
         </div>

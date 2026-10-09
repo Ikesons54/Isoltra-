@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { buildProgression, KEYS, voiceProgression } from '../engine'
 import type { KeyName } from '../engine'
 import { MOODS } from '../data/starterPatterns'
-import { deletePattern, getPattern, listPatterns, savePattern, seedPatternsIfNeeded } from '../db/db'
+import { deletePattern, getPattern, isSaved, listPatterns, savePattern, seedPatternsIfNeeded, toggleSaved } from '../db/db'
 import { getPref, newId, normalizeInput, setPref } from '../songs'
 import type { DisplayMode } from '../songs'
 import type { Difficulty, Pattern, PatternKind } from '../types'
@@ -128,7 +128,7 @@ function PatternList({ kind, onOpen, onNew }: { kind: PatternKind; onOpen: (id: 
 
 // ---------- Detail with key, display, level and voicings ----------
 
-function PatternDetail({
+export function PatternDetail({
   id,
   onBack,
   onEdit,
@@ -145,6 +145,11 @@ function PatternDetail({
   const [mode, setMode] = useState<DisplayMode>(getPref('display', 'chords') as DisplayMode)
   const [level, setLevel] = useState('full')
   const [voicings, setVoicings] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    isSaved('pattern', id).then(setSaved)
+  }, [id])
 
   useEffect(() => {
     getPattern(id).then(p => {
@@ -186,6 +191,9 @@ function PatternDetail({
       <div className="row between">
         <button className="link" onClick={onBack}>← Back</button>
         <div className="row gap">
+          <button className="link" onClick={async () => setSaved(await toggleSaved('pattern', pattern.id))}>
+            {saved ? '★ Saved' : '☆ Save'}
+          </button>
           <button className="link" onClick={onEdit}>Edit</button>
           <button className="link danger" onClick={remove}>Delete</button>
         </div>
@@ -280,7 +288,7 @@ function PatternDetail({
 
 // ---------- Add / edit ----------
 
-function PatternEditor({
+export function PatternEditor({
   id,
   kind,
   onCancel,

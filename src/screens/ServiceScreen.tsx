@@ -3,8 +3,9 @@ import { KEYS } from '../engine'
 import type { KeyName } from '../engine'
 import { deleteService, getService, listPatterns, listServices, listSongs, saveService, seedIfFirstRun, seedPatternsIfNeeded } from '../db/db'
 import { newId, normalizeInput, songLabel } from '../songs'
-import type { Pattern, Service, ServiceItem, Song } from '../types'
+import type { ItemType, Pattern, Service, ServiceItem, Song } from '../types'
 
+const TYPES: ItemType[] = ['Song', 'Hymn', 'Chant', 'Prayer', 'Preaching', 'Pad', 'Custom']
 const SLOTS = ['Prelude', 'Opening', 'Praise', 'Worship', 'Prayer', 'Preaching', 'Altar', 'Offering', 'Closing']
 
 type View = { name: 'list' } | { name: 'service'; id: string } | { name: 'item'; serviceId: string; itemId?: string }
@@ -13,8 +14,23 @@ export function todayString(): string {
   return new Date().toLocaleDateString('en-CA') // yyyy-mm-dd in local time
 }
 
-export default function ServiceScreen({ onStart }: { onStart: (id: string) => void }) {
-  const [view, setView] = useState<View>({ name: 'list' })
+export default function ServiceScreen({
+  onStart,
+  openId,
+  onOpened
+}: {
+  onStart: (id: string) => void
+  openId?: string
+  onOpened: () => void
+}) {
+  const [view, setView] = useState<View>(openId ? { name: 'service', id: openId } : { name: 'list' })
+
+  useEffect(() => {
+    if (openId) {
+      setView({ name: 'service', id: openId })
+      onOpened()
+    }
+  }, [openId])
 
   if (view.name === 'service') {
     return (
@@ -190,7 +206,7 @@ function ServiceEditor({
         {service.items.map((item, i) => (
           <li className="item-row" key={item.id}>
             <button className="item-main" onClick={() => onEditItem(item.id)}>
-              <span className="item-slot">{item.slot || 'Item'}</span>
+              <span className="item-slot">{[item.type, item.slot].filter(Boolean).join(' · ') || 'Item'}</span>
               <span className="li-title">{item.title}</span>
               <span className="li-sub">
                 Key {item.key}
@@ -218,6 +234,7 @@ function ItemForm({ serviceId, itemId, onDone }: { serviceId: string; itemId?: s
   const [songs, setSongs] = useState<Song[]>([])
   const [patterns, setPatterns] = useState<Pattern[]>([])
   const [slot, setSlot] = useState('Praise')
+  const [type, setType] = useState<ItemType>('Song')
   const [songId, setSongId] = useState('')
   const [title, setTitle] = useState('')
   const [key, setKey] = useState<KeyName>('F')
@@ -238,6 +255,7 @@ function ItemForm({ serviceId, itemId, onDone }: { serviceId: string; itemId?: s
       const item = sv.items.find(i => i.id === itemId)
       if (item) {
         setSlot(item.slot)
+        setType(item.type ?? (item.songId ? 'Song' : 'Custom'))
         setSongId(item.songId ?? '')
         setTitle(item.title)
         setKey(item.key)
@@ -253,6 +271,7 @@ function ItemForm({ serviceId, itemId, onDone }: { serviceId: string; itemId?: s
     setSongId(id)
     const s = songs.find(x => x.id === id)
     if (s) {
+      setType(s.hymnalId ? 'Hymn' : 'Song')
       setTitle(s.title)
       setKey(s.key)
     }
@@ -262,6 +281,7 @@ function ItemForm({ serviceId, itemId, onDone }: { serviceId: string; itemId?: s
     const p = patterns.find(x => x.id === id)
     if (!p) return
     setSongId('')
+    setType(p.kind === 'pad' ? 'Pad' : 'Chant')
     setTitle(p.name)
     setKey(p.key)
     setText(p.numbers)
@@ -280,6 +300,7 @@ function ItemForm({ serviceId, itemId, onDone }: { serviceId: string; itemId?: s
     }
     const item: ServiceItem = {
       id: itemId ?? newId(),
+      type,
       slot: slot.trim(),
       title: title.trim() || songs.find(s => s.id === songId)?.title || 'Untitled',
       songId: songId || undefined,
@@ -299,6 +320,15 @@ function ItemForm({ serviceId, itemId, onDone }: { serviceId: string; itemId?: s
         <button className="play on" onClick={save}>Save</button>
       </div>
       <h1 className="song-title">{itemId ? 'Edit item' : 'Add item'}</h1>
+
+      <label className="field">
+        Type
+        <select value={type} onChange={e => setType(e.target.value as ItemType)}>
+          {TYPES.map(t => (
+            <option key={t} value={t}>{t}</option>
+          ))}
+        </select>
+      </label>
 
       <label className="field">
         Slot
